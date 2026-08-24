@@ -392,3 +392,16 @@ main {
   .share-btn, .share-status { transition: none; }
   html { scroll-behavior: auto; }
 }
+
+.discount-badge {
+  display: inline-block;
+  margin: 10px 0 0;
+  padding: 5px 14px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--navy-900);
+  background: var(--teal);
+  border-radius: 999px;
+}
