@@ -147,7 +147,7 @@
   var body = sheet.querySelector('#orderBody');
   var lastFocus = null;
   var ct = { open: false, busy: false, msg: '', ok: false };
-  var METHODS = ['Delivery', 'Express mail (extra fee)'];
+  var METHODS = ['Delivery (Edmonton area only)', 'Express mail (extra fee)'];
   var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -274,7 +274,7 @@
   function methodNote() {
     return form.method === METHODS[1]
       ? 'Express mail has an extra fee. We’ll confirm the exact amount before you pay.'
-      : 'We’ll confirm delivery timing when we reply.';
+      : 'Local delivery is for the Edmonton area only. Outside Edmonton? Choose Express mail. We’ll confirm timing when we reply.';
   }
   function field(id, text, control) {
     return '<div class="order-field"><label for="' + id + '">' + text + '</label>' + control + '</div>';
