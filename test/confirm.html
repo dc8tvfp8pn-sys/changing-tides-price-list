@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Confirm order — Tides of Change</title>
+  <link rel="icon" href="assets/icon-512-v9.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --navy-900:#060e1c; --navy-850:#0a1424; --navy-800:#0e1a30; --navy-750:#12213b; --navy-line:#1c2c48;
+      --teal:#01c88a; --teal-2:#16e0a3; --cyan:#22c7e6; --blue:#0b9bdc; --orange:#ff9500;
+      --text:#f2f6fb; --text-2:#c4d2e4; --warn:#ffd166;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--navy-900); color:var(--text); font-family:'Space Grotesk',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+    .wrap { max-width:560px; margin:0 auto; padding:20px 16px 48px; }
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+    .brand img { width:44px; height:44px; border-radius:10px; }
+    .brand b { letter-spacing:.14em; font-size:1.05rem; }
+    .brand small { display:block; color:var(--teal); font-size:.75rem; letter-spacing:.02em; }
+    .stripe { display:flex; height:4px; border-radius:2px; overflow:hidden; margin:12px 0 18px; }
+    .stripe i { flex:1; } .stripe i:nth-child(1){background:var(--cyan)} .stripe i:nth-child(2){background:var(--teal)} .stripe i:nth-child(3){background:var(--blue)} .stripe i:nth-child(4){background:var(--orange)}
+    h1 { font-size:1.35rem; margin:0 0 4px; }
+    .muted { color:var(--text-2); font-size:.92rem; margin:0 0 16px; }
+    .card { background:var(--navy-800); border:1px solid var(--navy-line); border-radius:14px; padding:14px 16px; margin-bottom:14px; }
+    .card.pay { border-left:4px solid var(--orange); }
+    #items { border-bottom:1px solid var(--navy-line); margin:4px 0 6px; padding-bottom:6px; }
+    .ref { color:var(--cyan); font-size:.78rem; letter-spacing:.08em; }
+    .row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:.95rem; }
+    .row span:last-child { color:var(--teal); font-weight:700; white-space:nowrap; }
+    .row.total { border-top:1px solid var(--navy-line); margin-top:6px; padding-top:9px; font-weight:700; font-size:1.05rem; }
+    .kv { font-size:.9rem; color:var(--text-2); line-height:1.7; }
+    .kv b { color:var(--text); font-weight:600; }
+    .sec-title { font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--orange); margin:0 0 10px; }
+    label { display:block; font-size:.85rem; font-weight:600; color:var(--text-2); margin:12px 0 6px; }
+    input, textarea { width:100%; font:inherit; font-size:16px; color:var(--text); background:var(--navy-850); border:1px solid var(--navy-line); border-radius:10px; padding:11px 12px; }
+    input:focus, textarea:focus { outline:none; border-color:var(--teal); }
+    textarea { min-height:70px; resize:vertical; }
+    .money { position:relative; } .money input { padding-left:26px; } .money::before { content:'$'; position:absolute; left:12px; top:11px; color:var(--text-2); }
+    .seg { display:flex; gap:8px; }
+    .seg button { flex:1; font:inherit; font-weight:600; padding:10px; border-radius:10px; border:1px solid var(--navy-line); background:var(--navy-850); color:var(--text-2); cursor:pointer; }
+    .seg button[aria-pressed="true"] { border-color:var(--teal); color:var(--navy-900); background:var(--teal); }
+    .hint { font-size:.8rem; color:var(--text-2); margin:6px 0 0; }
+    .err { color:var(--warn); font-size:.9rem; min-height:1.2em; margin:10px 0 0; }
+    .actions { display:grid; gap:10px; margin-top:16px; }
+    .btn { font:inherit; font-weight:700; font-size:1rem; border:0; border-radius:999px; padding:14px 18px; cursor:pointer; }
+    .btn.primary { background:linear-gradient(90deg,var(--teal),var(--cyan)); color:#06121f; }
+    .btn.ghost { background:transparent; color:var(--teal); border:1px solid var(--teal); }
+    .btn[disabled] { opacity:.6; cursor:progress; }
+    .preview { margin-top:16px; border:1px solid var(--navy-line); border-radius:14px; overflow:hidden; background:#060e1c; }
+    .preview p { margin:0; padding:10px 14px; font-size:.82rem; color:var(--text-2); border-bottom:1px solid var(--navy-line); }
+    .preview iframe { display:block; width:100%; height:1100px; border:0; background:#060e1c; }
+    .done { text-align:center; padding:26px 16px; }
+    .done h2 { margin:0 0 8px; color:var(--teal); }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand"><img src="assets/icon-512-v9.png" alt="Tides of Change logo" /><div><b>TIDES OF CHANGE</b><small>Order desk</small></div></div>
+    <div class="stripe" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+    <p id="loading" class="muted">Loading order…</p>
+    <div id="problem" class="card" hidden><h1>Can’t open this order</h1><p class="muted" id="problemText"></p></div>
+
+    <section id="app" hidden>
+      <h1 id="title">Confirm order</h1>
+      <p class="muted">Check the order, fill in payment details, then send. The customer gets a branded email with their total and how to pay.</p>
+
+      <div class="card">
+        <div class="ref" id="ref"></div>
+        <div id="items"></div>
+        <div class="row"><span>Items</span><span id="sub"></span></div>
+        <div class="row"><span id="feeName">Delivery</span><span id="feeShow"></span></div>
+        <div class="row" id="fuelRow" hidden><span id="fuelName"></span><span id="fuelShow"></span></div>
+        <div class="row total"><span>Total due</span><span id="total"></span></div>
+      </div>
+
+      <div class="card kv" id="cust"></div>
+
+      <div class="card pay">
+        <p class="sec-title">Payment details</p>
+        <div id="feeWrap">
+          <label for="fee" id="feeLabel">Delivery fee</label>
+          <div class="money"><input id="fee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" /></div>
+          <p class="hint" id="feeHint"></p>
+        </div>
+        <label for="payEmail">Send e-Transfer to</label>
+        <input id="payEmail" type="email" inputmode="email" autocomplete="email" placeholder="your e-Transfer email" />
+        <label>Auto-deposit on that email?</label>
+        <div class="seg" role="group" aria-label="Auto-deposit">
+          <button type="button" id="adYes" aria-pressed="true">Yes</button>
+          <button type="button" id="adNo" aria-pressed="false">No</button>
+        </div>
+        <div id="qa" hidden>
+          <label for="q">Security question</label><input id="q" type="text" maxlength="200" />
+          <label for="a">Answer</label><input id="a" type="text" maxlength="100" />
+        </div>
+        <label for="eta">Timing (optional)</label>
+        <input id="eta" type="text" maxlength="200" placeholder="e.g. Delivery Tuesday evening" />
+        <label for="note">Personal note (optional)</label>
+        <textarea id="note" maxlength="600" placeholder="Anything you want to add"></textarea>
+      </div>
+
+      <p class="err" id="err" role="alert"></p>
+      <div class="actions">
+        <button class="btn primary" id="send" type="button">Send payment request to customer</button>
+        <button class="btn ghost" id="prev" type="button">Preview customer email</button>
+      </div>
+      <div class="preview" id="previewBox" hidden><p id="previewTo"></p><iframe id="previewFrame" title="Customer email preview" sandbox=""></iframe></div>
+    </section>
+
+    <section id="sent" class="card done" hidden>
+      <h2>Payment request sent</h2>
+      <p class="muted" id="sentText"></p>
+      <p class="hint">A copy is in your orders@tidesofchange.ca inbox.</p>
+    </section>
+  </main>
+
+  <script>
+  (function () {
+    var ENDPOINT = 'https://gvexlysmyqitmvexfxep.supabase.co/functions/v1/toc-order';
+    var $ = function (id) { return document.getElementById(id); };
+    var token = (location.hash.match(/[#&]t=([^&]+)/) || [])[1] || '';
+    var order = null, autodeposit = true;
+    function money(n) { n = Math.round(n * 100) / 100; return '$' + (n % 1 ? n.toFixed(2) : String(n)); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function call(body) {
+      body.token = token;
+      return fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json().catch(function () { return {}; }); });
+    }
+    var MSG = {
+      bad_link: 'This confirm link isn’t valid. Open it straight from the order email.',
+      expired: 'This confirm link has expired. Reply to the customer from the order email instead.',
+      no_customer_email: 'This customer didn’t give an email. Contact them by phone.',
+      pay_email: 'Enter the email that receives your e-Transfers.',
+      fee_required: 'Enter the Canada Post express postage.',
+      security_qa: 'Auto-deposit is off, so add a security question and answer.',
+      send_failed: 'Sending failed. Try again in a minute.',
+      rate_limited: 'Too many tries. Wait a few minutes.'
+    };
+    function problem(t) { $('loading').hidden = true; $('problem').hidden = false; $('problemText').textContent = t; }
+
+    if (!token) return problem('Open this page from the “Confirm order” button in an order email.');
+
+    call({ action: 'view' }).then(function (res) {
+      if (!res.ok) return problem(MSG[res.error] || 'Couldn’t load this order.');
+      order = res.order;
+      $('loading').hidden = true; $('app').hidden = false;
+      $('title').textContent = 'Confirm order for ' + order.name;
+      $('ref').textContent = 'ORDER ' + order.ref;
+      $('items').innerHTML = order.items.map(function (i) {
+        return '<div class="row"><span>' + i.qty + ' × ' + esc(i.name) + (i.size ? ' <span style="color:var(--text-2);font-weight:400">' + esc(i.size) + '</span>' : '') + '</span><span>' + money(i.qty * i.price) + '</span></div>';
+      }).join('');
+      $('cust').innerHTML = '<b>Customer:</b> ' + esc(order.name) + '<br><b>Email:</b> ' + esc(order.email || '—') + '<br><b>Phone:</b> ' + esc(order.phone || '—') +
+        '<br><b>Delivery:</b> ' + esc(order.method) + '<br><b>Address:</b> ' + esc(order.address) + (order.notes ? '<br><b>Notes:</b> ' + esc(order.notes) : '');
+      if (order.express) { $('feeLabel').textContent = 'Canada Post express postage'; $('feeName').textContent = 'Express mail (Canada Post)'; $('feeHint').textContent = 'Enter the Canada Post rate for this address.'; }
+      else { $('feeWrap').hidden = true; }
+      $('payEmail').value = order.payEmailDefault || '';
+      if (!order.email) { $('send').disabled = true; $('prev').disabled = true; $('err').textContent = MSG.no_customer_email; }
+      recalc();
+    });
+
+    function fee() { if (!order || !order.express) return 0; var v = parseFloat($('fee').value); return isFinite(v) && v > 0 ? v : 0; }
+    function extra() { var l = order && order.local; return l ? l.delivery + l.fuel : fee(); }
+    function recalc() {
+      if (!order) return;
+      $('sub').textContent = money(order.subtotal);
+      var l = order.local;
+      if (l) {
+        $('feeName').textContent = 'In-person delivery';
+        $('feeShow').textContent = l.free ? 'Free' : money(l.delivery);
+        $('fuelRow').hidden = true;
+      } else { $('fuelRow').hidden = true; $('feeShow').textContent = fee() ? money(fee()) : 'enter fee'; }
+      $('total').textContent = money(order.subtotal + extra()) + ' CAD';
+    }
+    function setAD(on) { autodeposit = on; $('adYes').setAttribute('aria-pressed', on); $('adNo').setAttribute('aria-pressed', !on); $('qa').hidden = on; }
+    $('fee').addEventListener('input', function () { recalc(); $('err').textContent = ''; });
+    $('adYes').addEventListener('click', function () { setAD(true); });
+    $('adNo').addEventListener('click', function () { setAD(false); });
+
+    function payload(action) {
+      return { action: action, fee: fee(), payEmail: $('payEmail').value.trim(), autodeposit: autodeposit,
+        question: $('q').value.trim(), answer: $('a').value.trim(), eta: $('eta').value.trim(), note: $('note').value.trim() };
+    }
+    function busy(b, on, label) { b.disabled = on; if (label) b.textContent = label; }
+
+    $('prev').addEventListener('click', function () {
+      var b = $('prev'); busy(b, true, 'Building preview…'); $('err').textContent = '';
+      call(payload('preview')).then(function (res) {
+        busy(b, false, 'Preview customer email');
+        if (!res.ok) { $('err').textContent = MSG[res.error] || 'Couldn’t build the preview.'; return; }
+        $('previewTo').textContent = 'To: ' + res.preview.to + ' · Subject: ' + res.preview.subject;
+        $('previewFrame').srcdoc = res.preview.html; $('previewBox').hidden = false;
+        $('previewBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    $('send').addEventListener('click', function () {
+      var b = $('send'); $('err').textContent = '';
+      var p = payload('confirm');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(p.payEmail)) { $('err').textContent = MSG.pay_email; return; }
+      if (order.express && !(p.fee > 0)) { $('err').textContent = MSG.fee_required; return; }
+      if (!autodeposit && (!p.question || !p.answer)) { $('err').textContent = MSG.security_qa; return; }
+      if (!window.confirm('Send the payment request for ' + money(order.subtotal + extra()) + ' CAD to ' + order.email + '?')) return;
+      busy(b, true, 'Sending…');
+      call(p).then(function (res) {
+        if (!res.ok) { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG[res.error] || 'Sending failed.'; return; }
+        $('app').hidden = true; $('sent').hidden = false;
+        $('sentText').textContent = order.name + ' (' + res.to + ') now has their total of ' + money(res.total) + ' CAD and e-Transfer instructions for order ' + res.ref + '.';
+        window.scrollTo(0, 0);
+      }).catch(function () { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG.send_failed; });
+    });
+  })();
+  </script>
+</body>
+</html>
