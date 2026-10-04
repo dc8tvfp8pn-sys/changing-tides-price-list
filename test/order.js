@@ -174,6 +174,20 @@
   }
   var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)'];
   var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
+  (function prefillFromApp() {
+    try {
+      var q = new URLSearchParams(window.location.search);
+      var n = (q.get('ctn') || '').slice(0, 120), e = (q.get('cte') || '').slice(0, 200);
+      if (!n && !e) return;
+      if (n) form.name = n;
+      if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) form.email = e;
+      q.delete('ctn'); q.delete('cte');
+      var rest = q.toString();
+      history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
+      window.__ctPrefilled = true;
+      ct.ok = true; ct.msg = 'Filled in from your Changing Tides account.';
+    } catch (err) {}
+  })();
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
@@ -222,7 +236,7 @@
       f.addEventListener('change', capture);
       f.addEventListener('submit', submit);
       body.querySelector('#orderCopy').addEventListener('click', copyOrder);
-      var o = body.querySelector('#ctOpen'); if (o) o.addEventListener('click', function () { capture(); ct.open = true; ct.msg = ''; renderSheet(); var e = body.querySelector('#ctEmail'); if (e) e.focus(); });
+      var o = body.querySelector('#ctOpen'); if (o) o.addEventListener('click', function () { capture(); ct.open = true; ct.msg = ''; renderSheet(); });
       var c = body.querySelector('#ctCancel'); if (c) c.addEventListener('click', function () { capture(); ct.open = false; ct.msg = ''; renderSheet(); });
       var g = body.querySelector('#ctGo'); if (g) g.addEventListener('click', ctSignInAndFill);
       var cp = body.querySelector('#ctPass'); if (cp) cp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ctSignInAndFill(); } });
@@ -459,18 +473,27 @@
     else legacy();
   }
 
+  var lockY = 0;
+  function lockScroll() {
+    lockY = window.scrollY || 0;
+    var b = document.body.style;
+    b.position = 'fixed'; b.top = (-lockY) + 'px'; b.left = '0'; b.right = '0'; b.width = '100%'; b.overflow = 'hidden';
+  }
+  function unlockScroll() {
+    var b = document.body.style;
+    b.position = ''; b.top = ''; b.left = ''; b.right = ''; b.width = ''; b.overflow = '';
+    window.scrollTo(0, lockY);
+  }
+
   function openSheet() {
     lastFocus = document.activeElement;
     renderSheet();
     sheet.hidden = false;
-    document.body.style.overflow = 'hidden';
-    var c = sheet.querySelector('#orderClose');
-    if (c) c.focus();
+    lockScroll();
   }
   function closeSheet() {
     sheet.hidden = true;
-    document.body.style.overflow = '';
-    if (lastFocus && lastFocus.focus) lastFocus.focus();
+    unlockScroll();
   }
 
   document.addEventListener('click', function (e) {
