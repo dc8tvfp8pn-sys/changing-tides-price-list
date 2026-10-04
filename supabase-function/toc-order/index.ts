@@ -18,7 +18,7 @@ function localFees(subtotal: number) {
   const free = FREE_OVER != null && subtotal >= FREE_OVER;
   return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free };
 }
-const PAY_EMAIL_DEFAULT = (Deno.env.get("TOC_ETRANSFER_EMAIL") || "").trim();
+const PAY_EMAIL_DEFAULT = (Deno.env.get("TOC_ETRANSFER_EMAIL") || "danystevelavoie@hotmail.com").trim(); // owner-set e-Transfer address
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
