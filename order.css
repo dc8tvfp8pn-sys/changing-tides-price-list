@@ -71,8 +71,8 @@
 .order-bar-total { font-size: 1.15rem; font-weight: 700; color: var(--teal); font-variant-numeric: tabular-nums; }
 .order-bar .order-cta { padding: 11px 18px; }
 
-/* lift back-to-top above the bar while it shows */
-body.has-order .back-to-top { bottom: 92px; }
+/* while the order bar shows, it replaces the back-to-top pill (avoids covering Add buttons) */
+body.has-order .back-to-top { display: none; }
 body.has-order .warnings { padding-bottom: 150px; }
 
 /* order sheet */
