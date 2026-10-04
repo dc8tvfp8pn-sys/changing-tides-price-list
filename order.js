@@ -143,7 +143,8 @@
   document.body.appendChild(sheet);
   var body = sheet.querySelector('#orderBody');
   var lastFocus = null;
-  var form = { name: '', phone: '', email: '', method: 'Pickup', notes: '', ack: false };
+  var METHODS = ['Delivery', 'Express mail (extra fee)'];
+  var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
@@ -165,13 +166,15 @@
       '<ul class="order-items">' + rows + '</ul>' +
       (t.list.length ?
         '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum) + '</span></div>' +
-        '<p class="order-total-note">CAD. Final total confirmed by our team before payment.</p>' +
+        '<p class="order-total-note">CAD, before any express mail fee. Final total confirmed by our team before payment.</p>' +
         '<form class="order-form" id="orderForm" novalidate>' +
           field('ofName', 'Name', '<input id="ofName" name="name" autocomplete="name" required value="' + esc(form.name) + '">') +
           field('ofPhone', 'Phone', '<input id="ofPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" value="' + esc(form.phone) + '">') +
           field('ofEmail', 'Email', '<input id="ofEmail" name="email" type="email" autocomplete="email" inputmode="email" value="' + esc(form.email) + '">') +
-          field('ofMethod', 'Pickup or delivery', '<select id="ofMethod" name="method">' +
-            ['Pickup', 'Delivery', 'Not sure yet'].map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
+          field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method">' +
+            METHODS.map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
+          '<p class="order-total-note" id="ofMethodNote">' + methodNote() + '</p>' +
+          field('ofAddress', 'Delivery address', '<textarea id="ofAddress" name="address" autocomplete="street-address" placeholder="Street, city, province, postal code">' + esc(form.address) + '</textarea>') +
           field('ofNotes', 'Notes (optional)', '<textarea id="ofNotes" name="notes" placeholder="Anything we should know">' + esc(form.notes) + '</textarea>') +
           '<label class="order-check"><input type="checkbox" id="ofAck"' + (form.ack ? ' checked' : '') + '> I understand these products are for research purposes only.</label>' +
           '<p class="order-pay"><strong>Payment:</strong> Interac e-Transfer after we confirm your order. No card details needed.</p>' +
@@ -185,7 +188,7 @@
 
     var f = body.querySelector('#orderForm');
     if (f) {
-      f.addEventListener('input', capture);
+      f.addEventListener('input', function () { capture(); var er = body.querySelector('#orderError'); if (er) er.textContent = ''; });
       f.addEventListener('change', capture);
       f.addEventListener('submit', submit);
       body.querySelector('#orderCopy').addEventListener('click', copyOrder);
@@ -194,13 +197,19 @@
       });
     }
   }
+  function methodNote() {
+    return form.method === METHODS[1]
+      ? 'Express mail has an extra fee. We’ll confirm the exact amount before you pay.'
+      : 'We’ll confirm delivery timing when we reply.';
+  }
   function field(id, text, control) {
     return '<div class="order-field"><label for="' + id + '">' + text + '</label>' + control + '</div>';
   }
   function capture() {
     var g = function (id) { var el = body.querySelector('#' + id); return el ? el.value : ''; };
     form.name = g('ofName'); form.phone = g('ofPhone'); form.email = g('ofEmail');
-    form.method = g('ofMethod') || form.method; form.notes = g('ofNotes');
+    form.method = g('ofMethod') || form.method; form.address = g('ofAddress'); form.notes = g('ofNotes');
+    var mn = body.querySelector('#ofMethodNote'); if (mn) mn.textContent = methodNote();
     var a = body.querySelector('#ofAck'); form.ack = !!(a && a.checked);
   }
 
@@ -224,14 +233,15 @@
       'Name: ' + form.name.trim(),
       'Phone: ' + (form.phone.trim() || '—'),
       'Email: ' + (form.email.trim() || '—'),
-      'Pickup or delivery: ' + form.method,
+      'Delivery method: ' + form.method,
+      'Delivery address: ' + form.address.trim().replace(/\s*\n\s*/g, ', '),
       '',
       'Items:'
     ];
     t.list.forEach(function (it) {
       lines.push('• ' + it.qty + ' × ' + label(it) + ' @ ' + money(it.price) + ' = ' + money(it.qty * it.price));
     });
-    lines.push('', 'Estimated total: ' + money(t.sum) + ' CAD (final total confirmed before payment)');
+    lines.push('', 'Estimated total: ' + money(t.sum) + ' CAD' + (form.method === METHODS[1] ? ' + express mail fee' : '') + ' (final total confirmed before payment)');
     if (form.notes.trim()) lines.push('', 'Notes: ' + form.notes.trim());
     lines.push('', 'Payment: Interac e-Transfer after confirmation.', 'Customer confirmed: research purposes only.');
     return lines.join('\n');
@@ -243,6 +253,7 @@
     if (!form.name.trim()) return 'Please enter your name.';
     if (!form.phone.trim() && !form.email.trim()) return 'Please enter a phone number or email so we can confirm.';
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'That email address doesn’t look right.';
+    if (!form.address.trim()) return 'Please enter your delivery address.';
     if (!form.ack) return 'Please tick the research-purposes box.';
     return '';
   }
