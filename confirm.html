@@ -146,8 +146,6 @@
       rate_limited: 'Too many tries. Wait a few minutes.'
     };
     function problem(t) { $('loading').hidden = true; $('problem').hidden = false; $('problemText').textContent = t; }
-    function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
-    function load(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
 
     if (!token) return problem('Open this page from the “Confirm order” button in an order email.');
 
@@ -164,8 +162,7 @@
         '<br><b>Delivery:</b> ' + esc(order.method) + '<br><b>Address:</b> ' + esc(order.address) + (order.notes ? '<br><b>Notes:</b> ' + esc(order.notes) : '');
       if (order.express) { $('feeLabel').textContent = 'Canada Post express postage'; $('feeName').textContent = 'Express mail (Canada Post)'; $('feeHint').textContent = 'Enter the Canada Post rate for this address.'; }
       else { $('feeWrap').hidden = true; }
-      $('payEmail').value = load('toc_pay_email') || order.payEmailDefault || '';
-      if (load('toc_autodeposit') === 'no') setAD(false);
+      $('payEmail').value = order.payEmailDefault || '';
       if (!order.email) { $('send').disabled = true; $('prev').disabled = true; $('err').textContent = MSG.no_customer_email; }
       recalc();
     });
@@ -215,7 +212,6 @@
       busy(b, true, 'Sending…');
       call(p).then(function (res) {
         if (!res.ok) { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG[res.error] || 'Sending failed.'; return; }
-        store('toc_pay_email', p.payEmail); store('toc_autodeposit', autodeposit ? 'yes' : 'no');
         $('app').hidden = true; $('sent').hidden = false;
         $('sentText').textContent = order.name + ' (' + res.to + ') now has their total of ' + money(res.total) + ' CAD and e-Transfer instructions for order ' + res.ref + '.';
         window.scrollTo(0, 0);
