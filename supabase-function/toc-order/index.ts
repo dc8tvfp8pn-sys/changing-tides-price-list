@@ -90,42 +90,42 @@ async function send(apiKey: string, msg: Record<string, unknown>) {
 type Item = { name: string; size: string; qty: number; price: number };
 const F = "font-family:Arial,Helvetica,sans-serif;";
 const rowsHtml = (items: Item[]) => items.map((i) =>
-  `<tr><td style="padding:6px 0;${F}font-size:15px;color:#f2f6fb">${i.qty} &times; ${esc(i.name)}${i.size ? ` <span style="color:#c4d2e4">${esc(i.size)}</span>` : ""}</td><td align="right" style="padding:6px 0;${F}font-size:15px;font-weight:700;color:#01c88a;text-align:right">${money(i.qty * i.price)}</td></tr>`
+  `<tr><td style="padding:6px 0;${F}font-size:15px;color:#0a1424">${i.qty} &times; ${esc(i.name)}${i.size ? ` <span style="color:#3c4b63">${esc(i.size)}</span>` : ""}</td><td align="right" style="padding:6px 0;${F}font-size:15px;font-weight:700;color:#007a55;text-align:right">${money(i.qty * i.price)}</td></tr>`
 ).join("");
 const lineRow = (label: string, value: string, strong = false) =>
-  `<tr><td style="padding:4px 0;${F}font-size:${strong ? 16 : 14}px;color:${strong ? "#f2f6fb" : "#c4d2e4"};font-weight:${strong ? 700 : 400}">${label}</td><td align="right" style="padding:4px 0;${F}font-size:${strong ? 16 : 14}px;font-weight:700;color:${strong ? "#01c88a" : "#f2f6fb"};text-align:right">${value}</td></tr>`;
+  `<tr><td style="padding:4px 0;${F}font-size:${strong ? 16 : 14}px;color:${strong ? "#0a1424" : "#3c4b63"};font-weight:${strong ? 700 : 400}">${label}</td><td align="right" style="padding:4px 0;${F}font-size:${strong ? 16 : 14}px;font-weight:700;color:${strong ? "#007a55" : "#0a1424"};text-align:right">${value}</td></tr>`;
 const section = (html: string) => `<tr><td style="padding:16px 24px 0 24px">${html}</td></tr>`;
 const panel = (inner: string, accent = "") =>
-  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0e1a30" background="${BG_PANEL}" style="background:#0e1a30 url(${BG_PANEL}) repeat;border:1px solid #1c2c48;${accent ? `border-left:4px solid ${accent};` : ""}border-radius:12px"><tr><td style="padding:14px 16px;${F}color:#f2f6fb;font-size:14px;line-height:1.55">${inner}</td></tr></table>`;
-const textBlock = (html: string) => `<tr><td style="padding:16px 24px 0 24px;${F}font-size:14px;line-height:1.7;color:#c4d2e4">${html}</td></tr>`;
+  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f6fa" style="background:#f3f6fa;border:1px solid #dbe3ee;${accent ? `border-left:4px solid ${accent};` : ""}border-radius:12px"><tr><td style="padding:14px 16px;${F}color:#0a1424;font-size:14px;line-height:1.55">${inner}</td></tr></table>`;
+const textBlock = (html: string) => `<tr><td style="padding:16px 24px 0 24px;${F}font-size:14px;line-height:1.7;color:#3c4b63">${html}</td></tr>`;
 const button = (href: string, label: string) =>
   `<tr><td align="center" style="padding:20px 24px 0 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#01c88a" style="background:#01c88a;border-radius:999px"><a href="${href}" style="display:inline-block;padding:14px 26px;${F}font-size:15px;font-weight:700;color:#06121f;text-decoration:none">${label}</a></td></tr></table></td></tr>`;
 
 function shell(title: string, intro: string, body: string) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark only"><meta name="supported-color-schemes" content="dark">
-<style>:root{color-scheme:dark only} body{background-color:#060e1c}</style></head>
-<body bgcolor="#060e1c" background="${BG_DEEP}" style="margin:0;padding:0;background:#060e1c url(${BG_DEEP}) repeat">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#060e1c" background="${BG_DEEP}" style="background:#060e1c url(${BG_DEEP}) repeat"><tr><td align="center" style="padding:20px 10px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a1424" background="${BG_CARD}" style="max-width:560px;background:#0a1424 url(${BG_CARD}) repeat;border:1px solid #1c2c48;border-radius:16px;overflow:hidden">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<style>:root{color-scheme:light dark} body{background-color:#eef2f7}</style></head>
+<body bgcolor="#eef2f7" style="margin:0;padding:0;background:#eef2f7">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef2f7" style="background:#eef2f7"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="max-width:560px;background:#ffffff;border:1px solid #dbe3ee;border-radius:16px;overflow:hidden">
 <tr><td style="padding:0;font-size:0;line-height:0"><img src="${HEADER_IMG}" width="560" alt="Tides of Change · Research Supplement Price List" style="display:block;width:100%;max-width:560px;height:auto;border:0"></td></tr>
 <tr><td style="padding:22px 24px 0 24px;${F}">
-<div style="font-size:20px;font-weight:700;color:#f2f6fb;line-height:1.3">${title}</div>
-<div style="font-size:15px;color:#c4d2e4;line-height:1.55;margin-top:8px">${intro}</div>
+<div style="font-size:20px;font-weight:700;color:#0a1424;line-height:1.3">${title}</div>
+<div style="font-size:15px;color:#3c4b63;line-height:1.55;margin-top:8px">${intro}</div>
 </td></tr>
 ${body}
-<tr><td style="padding:20px 24px 24px 24px;${F}font-size:12px;color:#8ea2bf;line-height:1.5">
-For research purposes only. Questions? Reply to this email or write to <a href="mailto:${ORDER_TO}" style="color:#22c7e6">${ORDER_TO}</a>.
+<tr><td style="padding:20px 24px 24px 24px;${F}font-size:12px;color:#5d6b80;line-height:1.5">
+For research purposes only. Questions? Reply to this email or write to <a href="mailto:${ORDER_TO}" style="color:#0b6f9e">${ORDER_TO}</a>.
 </td></tr>
 </table></td></tr></table></body></html>`;
 }
 
 function orderPanel(ref: string, items: Item[], totalsHtml: string) {
   return section(panel(
-    `<div style="font-size:12px;color:#22c7e6;letter-spacing:.06em">ORDER ${esc(ref)}</div>
+    `<div style="font-size:12px;color:#0b6f9e;letter-spacing:.06em">ORDER ${esc(ref)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px">${rowsHtml(items)}</table>
-<div style="border-top:1px solid #1c2c48;margin-top:8px;padding-top:6px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${totalsHtml}</table></div>`));
+<div style="border-top:1px solid #dbe3ee;margin-top:8px;padding-top:6px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${totalsHtml}</table></div>`));
 }
 
 // ---------- handlers ----------
@@ -174,7 +174,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
     (express ? lineRow("Express mail", "Canada Post rate")
       : lineRow("In-person delivery", lf.free ? "Free" : money(lf.delivery))) +
     lineRow("Estimated total", `${money(est)} CAD${express ? " +" : ""}`, true);
-  const fuelBlurb = !express && !lf.free ? textBlock(`<span style="font-size:12px;color:#8ea2bf">${FUEL_NOTE}</span>`) : "";
+  const fuelBlurb = !express && !lf.free ? textBlock(`<span style="font-size:12px;color:#5d6b80">${FUEL_NOTE}</span>`) : "";
 
   const ownerText = [
     `NEW ORDER ${ref} — Tides of Change`, "",
@@ -187,15 +187,15 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
   ].join("\n");
 
   const details = textBlock(
-    `<strong style="color:#f2f6fb">Phone:</strong> ${esc(phone || "—")}<br><strong style="color:#f2f6fb">Email:</strong> ${esc(email || "—")}<br>` +
-    `<strong style="color:#f2f6fb">Delivery:</strong> ${esc(method)}<br><strong style="color:#f2f6fb">Address:</strong> ${esc(address)}` +
-    (notes ? `<br><strong style="color:#f2f6fb">Notes:</strong> ${esc(notes)}` : ""));
+    `<strong style="color:#0a1424">Phone:</strong> ${esc(phone || "—")}<br><strong style="color:#0a1424">Email:</strong> ${esc(email || "—")}<br>` +
+    `<strong style="color:#0a1424">Delivery:</strong> ${esc(method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(address)}` +
+    (notes ? `<br><strong style="color:#0a1424">Notes:</strong> ${esc(notes)}` : ""));
   const ownerHtml = shell(`New order from ${esc(name)}`,
     email ? "Check stock, then tap the button to confirm and send the customer their payment details."
           : "No email given — contact the customer by phone to confirm and take payment.",
     orderPanel(ref, items, estRows) + details +
     (email ? button(confirmLink, "Confirm order &amp; send payment request") +
-      textBlock(`<span style="font-size:12px;color:#8ea2bf">Or reply to this email to write to the customer yourself.</span>`) : ""));
+      textBlock(`<span style="font-size:12px;color:#5d6b80">Or reply to this email to write to the customer yourself.</span>`) : ""));
 
   const sentOwner = await send(apiKey, {
     to: [ORDER_TO],
@@ -209,8 +209,8 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
   let customerCopy = false;
   if (email) {
     const pay = section(panel(
-      `<div style="font-weight:700;color:#ff9500;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Payment &middot; Interac e-Transfer</div>
-<div style="color:#c4d2e4">Please don&rsquo;t send payment yet. We&rsquo;ll email you shortly to confirm your order${express ? " and the Canada Post postage" : ""}, with the exact amount and where to send your e-Transfer.</div>`, "#ff9500"));
+      `<div style="font-weight:700;color:#b85f00;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Payment &middot; Interac e-Transfer</div>
+<div style="color:#3c4b63">Please don&rsquo;t send payment yet. We&rsquo;ll email you shortly to confirm your order${express ? " and the Canada Post postage" : ""}, with the exact amount and where to send your e-Transfer.</div>`, "#ff9500"));
     customerCopy = await send(apiKey, {
       to: [email],
       subject: `We got your order ${ref} — Tides of Change`,
@@ -218,7 +218,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
       html_body: shell(`Thanks, ${esc(name)} — we got your order`,
         `We&rsquo;ll check everything and get back to you shortly. Here&rsquo;s what you asked for:`,
         orderPanel(ref, items, estRows) + fuelBlurb + pay +
-        textBlock(`<strong style="color:#f2f6fb">Delivery:</strong> ${esc(method)}<br><strong style="color:#f2f6fb">Address:</strong> ${esc(address)}`)),
+        textBlock(`<strong style="color:#0a1424">Delivery:</strong> ${esc(method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(address)}`)),
       custom_headers: [{ header: "Reply-To", value: ORDER_TO }],
     });
   }
@@ -258,25 +258,25 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
     lineRow("Total due", `${money(total)} CAD`, true);
 
   const steps = [
-    `Send <strong style="color:#f2f6fb">${money(total)} CAD</strong> by Interac e-Transfer to <strong style="color:#f2f6fb">${esc(payEmail)}</strong>`,
-    `In the message box, enter your order number <strong style="color:#f2f6fb">${esc(o.ref)}</strong>`,
+    `Send <strong style="color:#0a1424">${money(total)} CAD</strong> by Interac e-Transfer to <strong style="color:#0a1424">${esc(payEmail)}</strong>`,
+    `In the message box, enter your order number <strong style="color:#0a1424">${esc(o.ref)}</strong>`,
     autodeposit ? `Auto-deposit is on, so no security question is needed`
-      : `Security question: <strong style="color:#f2f6fb">${esc(question)}</strong><br>Answer: <strong style="color:#f2f6fb">${esc(answer)}</strong>`,
+      : `Security question: <strong style="color:#0a1424">${esc(question)}</strong><br>Answer: <strong style="color:#0a1424">${esc(answer)}</strong>`,
   ];
   const payPanel = section(panel(
-    `<div style="font-weight:700;color:#ff9500;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">How to pay &middot; Interac e-Transfer</div>
+    `<div style="font-weight:700;color:#b85f00;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">How to pay &middot; Interac e-Transfer</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${steps.map((s, n) =>
-      `<tr><td valign="top" width="28" style="padding:4px 0;${F}font-size:14px;font-weight:700;color:#ff9500">${n + 1}.</td><td style="padding:4px 0;${F}font-size:14px;color:#c4d2e4;line-height:1.5">${s}</td></tr>`).join("")}</table>`, "#ff9500"));
+      `<tr><td valign="top" width="28" style="padding:4px 0;${F}font-size:14px;font-weight:700;color:#b85f00">${n + 1}.</td><td style="padding:4px 0;${F}font-size:14px;color:#3c4b63;line-height:1.5">${s}</td></tr>`).join("")}</table>`, "#ff9500"));
   const next = express
     ? "Once your payment arrives, we&rsquo;ll ship your order by express mail and send you the tracking number."
     : "Once your payment arrives, we&rsquo;ll contact you to arrange your in-person delivery.";
   const html = shell(`Your order is confirmed, ${esc(o.name)}`,
     "Thank you for your order. Everything is confirmed and ready. Here are your final total and payment details.",
     orderPanel(o.ref, items, totals) + payPanel +
-    textBlock((eta ? `<strong style="color:#f2f6fb">Timing:</strong> ${esc(eta)}<br>` : "") +
-      `<strong style="color:#f2f6fb">Delivery:</strong> ${esc(o.method)}<br><strong style="color:#f2f6fb">Address:</strong> ${esc(o.address)}` +
+    textBlock((eta ? `<strong style="color:#0a1424">Timing:</strong> ${esc(eta)}<br>` : "") +
+      `<strong style="color:#0a1424">Delivery:</strong> ${esc(o.method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(o.address)}` +
       (note ? `<br><br>${esc(note).replace(/\n/g, "<br>")}` : "") + `<br><br>${next}`) +
-    textBlock(`Thank you for choosing Tides of Change.<br><strong style="color:#f2f6fb">Tides of Change</strong> &middot; <a href="mailto:${ORDER_TO}" style="color:#22c7e6">${ORDER_TO}</a>`));
+    textBlock(`Thank you for choosing Tides of Change.<br><strong style="color:#0a1424">Tides of Change</strong> &middot; <a href="mailto:${ORDER_TO}" style="color:#0b6f9e">${ORDER_TO}</a>`));
 
   const text = [
     `Hi ${o.name},`, "", "Thank you for your order. Everything is confirmed and ready.", "",
