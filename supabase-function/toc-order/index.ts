@@ -8,7 +8,7 @@ const ORDER_TO = "orders@tidesofchange.ca";
 const SENDER = "Tides of Change Orders <orders@tidesofchange.ca>";
 const METHODS = ["In-person delivery (Edmonton area)", "Express mail (Canada Post rate)"];
 const LOGO = "https://dc8tvfp8pn-sys.github.io/changing-tides-price-list/assets/icon-512-v9.png";
-const CONFIRM_URL = (Deno.env.get("TOC_CONFIRM_URL") || "https://dc8tvfp8pn-sys.github.io/changing-tides-price-list/test/confirm.html").trim();
+const CONFIRM_URL = (Deno.env.get("TOC_CONFIRM_URL") || "https://dc8tvfp8pn-sys.github.io/changing-tides-price-list/confirm.html").trim();
 // Edmonton delivery pricing. FREE_OVER = items subtotal at/above which delivery + fuel are free (null = never).
 const DELIVERY_FEE = 20, FUEL_FEE = 0; // $20 in-person delivery includes the Rising Tide fuel surcharge
 const FREE_OVER: number | null = 200; // free when items subtotal is $200 or more
