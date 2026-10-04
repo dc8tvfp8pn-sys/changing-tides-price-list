@@ -6,16 +6,16 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const ORDER_TO = "orders@tidesofchange.ca";
 const SENDER = "Tides of Change Orders <orders@tidesofchange.ca>";
-const METHODS = ["Delivery (Edmonton area only)", "Express mail (extra fee)"];
+const METHODS = ["In-person delivery (Edmonton area)", "Express mail (Canada Post rate)"];
 const LOGO = "https://dc8tvfp8pn-sys.github.io/changing-tides-price-list/assets/icon-512-v9.png";
 const CONFIRM_URL = (Deno.env.get("TOC_CONFIRM_URL") || "https://tidesofchange.ca/confirm.html").trim();
 // Edmonton delivery pricing. FREE_OVER = items subtotal at/above which delivery + fuel are free (null = never).
-const DELIVERY_FEE = 20, FUEL_FEE = 20;
-const FREE_OVER: number | null = 200; // free when items subtotal is over $200
+const DELIVERY_FEE = 20, FUEL_FEE = 0; // $20 in-person delivery includes the Rising Tide fuel surcharge
+const FREE_OVER: number | null = 200; // free when items subtotal is $200 or more
 const FUEL_NAME = "Rising Tide fuel surcharge";
-const FUEL_NOTE = "Fuel prices are running high. This small temporary surcharge keeps Edmonton delivery running and comes off when the tide goes out.";
+const FUEL_NOTE = "In-person delivery includes our Rising Tide fuel surcharge. Fuel prices are running high, and this keeps delivery running until the tide goes out.";
 function localFees(subtotal: number) {
-  const free = FREE_OVER != null && subtotal > FREE_OVER;
+  const free = FREE_OVER != null && subtotal >= FREE_OVER;
   return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free };
 }
 const PAY_EMAIL_DEFAULT = (Deno.env.get("TOC_ETRANSFER_EMAIL") || "").trim();
@@ -170,13 +170,12 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
   const lines = items.map((i) => `• ${i.qty} × ${i.name}${i.size ? " " + i.size : ""} @ ${money(i.price)} = ${money(i.qty * i.price)}`);
   const lf = localFees(subtotal);
   const est = subtotal + (express ? 0 : lf.delivery + lf.fuel);
-  const feeText = express ? ["Express mail: quoted on confirm"]
-    : lf.free ? ["Edmonton delivery: Free"] : [`Edmonton delivery: ${money(lf.delivery)}`, `${FUEL_NAME}: ${money(lf.fuel)}`];
-  const estLine = [`Items: ${money(subtotal)}`, ...feeText, `Estimated total: ${money(est)} CAD${express ? " + express mail" : ""} (final total confirmed before payment)`].join("\n");
+  const feeText = express ? ["Express mail: Canada Post rate (confirmed before payment)"]
+    : [`In-person delivery: ${lf.free ? "Free" : money(lf.delivery)}`];
+  const estLine = [`Items: ${money(subtotal)}`, ...feeText, `Estimated total: ${money(est)} CAD${express ? " + Canada Post express postage" : ""} (final total confirmed before payment)`].join("\n");
   const estRows = lineRow("Items", money(subtotal)) +
-    (express ? lineRow("Express mail", "quoted on confirm")
-      : lf.free ? lineRow("Edmonton delivery", "Free")
-      : lineRow("Edmonton delivery", money(lf.delivery)) + lineRow(FUEL_NAME, money(lf.fuel))) +
+    (express ? lineRow("Express mail", "Canada Post rate")
+      : lineRow("In-person delivery", lf.free ? "Free" : money(lf.delivery))) +
     lineRow("Estimated total", `${money(est)} CAD${express ? " +" : ""}`, true);
   const fuelBlurb = !express && !lf.free ? textBlock(`<span style="font-size:12px;color:#8ea2bf">${FUEL_NOTE}</span>`) : "";
 
@@ -214,11 +213,11 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
   if (email) {
     const pay = section(panel(
       `<div style="font-weight:700;color:#ff9500;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Payment &middot; Interac e-Transfer</div>
-<div style="color:#c4d2e4">Please don&rsquo;t send payment yet. We&rsquo;ll email you shortly to confirm your order${express ? " and the express mail fee" : ""}, with the exact amount and where to send your e-Transfer.</div>`, "#ff9500"));
+<div style="color:#c4d2e4">Please don&rsquo;t send payment yet. We&rsquo;ll email you shortly to confirm your order${express ? " and the Canada Post postage" : ""}, with the exact amount and where to send your e-Transfer.</div>`, "#ff9500"));
     customerCopy = await send(apiKey, {
       to: [email],
       subject: `We got your order ${ref} — Tides of Change`,
-      text_body: `Thanks ${name}, we received your order request.\n\n${lines.join("\n")}\n\n${estLine}\n\nPayment: Interac e-Transfer. Please don't send payment yet. We'll email you shortly to confirm your order${express ? " and the express mail fee" : ""}, with the exact amount and where to send your e-Transfer.\n\nTides of Change — research purposes only.`,
+      text_body: `Thanks ${name}, we received your order request.\n\n${lines.join("\n")}\n\n${estLine}\n\nPayment: Interac e-Transfer. Please don't send payment yet. We'll email you shortly to confirm your order${express ? " and the Canada Post postage" : ""}, with the exact amount and where to send your e-Transfer.\n\nTides of Change — research purposes only.`,
       html_body: shell(`Thanks, ${esc(name)} — we got your order`,
         `We&rsquo;ll check everything and get back to you shortly. Here&rsquo;s what you asked for:`,
         orderPanel(ref, items, estRows) + fuelBlurb + pay +
@@ -255,9 +254,8 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   if (express && !(fee > 0)) return json(400, { ok: false, error: "fee_required" });
   if (!autodeposit && (!question || !answer)) return json(400, { ok: false, error: "security_qa" });
 
-  const feeLines: [string, string][] = express ? [["Express mail", money(fee)]]
-    : lf.free ? [["Edmonton delivery", "Free"]]
-    : [["Edmonton delivery", money(lf.delivery)], [FUEL_NAME, money(lf.fuel)]];
+  const feeLines: [string, string][] = express ? [["Express mail (Canada Post)", money(fee)]]
+    : [["In-person delivery", lf.free ? "Free" : money(lf.delivery)]];
   const totals = lineRow("Items", `${money(subtotal)}`) +
     feeLines.map(([k, v]) => lineRow(k, v)).join("") +
     lineRow("Total due", `${money(total)} CAD`, true);
@@ -274,7 +272,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
       `<tr><td valign="top" width="28" style="padding:4px 0;${F}font-size:14px;font-weight:700;color:#ff9500">${n + 1}.</td><td style="padding:4px 0;${F}font-size:14px;color:#c4d2e4;line-height:1.5">${s}</td></tr>`).join("")}</table>`, "#ff9500"));
   const next = express
     ? "Once your payment arrives, we&rsquo;ll ship your order by express mail and send you the tracking number."
-    : "Once your payment arrives, we&rsquo;ll contact you to arrange your Edmonton-area delivery.";
+    : "Once your payment arrives, we&rsquo;ll contact you to arrange your in-person delivery.";
   const html = shell(`Your order is confirmed, ${esc(o.name)}`,
     "Thank you for your order. Everything is confirmed and ready. Here are your final total and payment details.",
     orderPanel(o.ref, items, totals) + payPanel +

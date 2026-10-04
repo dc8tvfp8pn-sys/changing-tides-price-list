@@ -148,32 +148,31 @@
   var lastFocus = null;
   var ct = { open: false, busy: false, msg: '', ok: false };
   // Edmonton delivery pricing (owner-set). FREE_OVER: items subtotal at/above which delivery + fuel are free; null = never.
-  var DELIVERY_FEE = 20, FUEL_FEE = 20, FREE_OVER = 200; // free when items subtotal is over $200
+  var DELIVERY_FEE = 20, FUEL_FEE = 0, FREE_OVER = 200; // free when items subtotal is $200 or more
   var FUEL_NAME = 'Rising Tide fuel surcharge';
-  var FUEL_NOTE = 'Fuel prices are running high. This small temporary surcharge keeps Edmonton delivery running and comes off when the tide goes out.';
+  var FUEL_NOTE = 'Includes our Rising Tide fuel surcharge. Fuel prices are running high, and this keeps in-person delivery running until the tide goes out.';
   function fees(sum, method) {
     if (method !== METHODS[0]) return { delivery: 0, fuel: 0, free: false, express: true };
-    var free = FREE_OVER != null && sum > FREE_OVER;
+    var free = FREE_OVER != null && sum >= FREE_OVER;
     return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free: free, express: false };
   }
   function totalsHtml() {
     var t = totals(), f = fees(t.sum, form.method), h = '';
     h += '<div class="order-fee-row"><span>Items</span><span>' + money(t.sum) + '</span></div>';
     if (f.express) {
-      h += '<div class="order-fee-row"><span>Express mail</span><span>quoted on confirm</span></div>';
+      h += '<div class="order-fee-row"><span>Express mail</span><span>Canada Post rate</span></div>';
     } else if (f.free) {
-      h += '<div class="order-fee-row"><span>Edmonton delivery</span><span class="free">Free</span></div>';
+      h += '<div class="order-fee-row"><span>In-person delivery</span><span class="free">Free</span></div>';
     } else {
-      h += '<div class="order-fee-row"><span>Edmonton delivery</span><span>' + money(f.delivery) + '</span></div>';
-      h += '<div class="order-fee-row"><span>' + FUEL_NAME + '</span><span>' + money(f.fuel) + '</span></div>';
+      h += '<div class="order-fee-row"><span>In-person delivery</span><span>' + money(f.delivery) + '</span></div>';
     }
     h += '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum + f.delivery + f.fuel) + (f.express ? '+' : '') + '</span></div>';
-    h += '<p class="order-total-note">' + (f.express ? 'CAD, plus express mail. ' : 'CAD. ') + 'Final total confirmed by our team before payment.</p>';
+    h += '<p class="order-total-note">' + (f.express ? 'CAD, plus Canada Post express postage. ' : 'CAD. ') + 'Final total confirmed by our team before payment.</p>';
     if (!f.express && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
-    if (!f.express && FREE_OVER != null && !f.free) h += '<p class="order-total-note">Free Edmonton delivery on orders over ' + money(FREE_OVER) + '.</p>';
+    if (!f.express && FREE_OVER != null && !f.free) h += '<p class="order-total-note">Free in-person delivery on orders of ' + money(FREE_OVER) + ' or more.</p>';
     return h;
   }
-  var METHODS = ['Delivery (Edmonton area only)', 'Express mail (extra fee)'];
+  var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)'];
   var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -299,8 +298,8 @@
 
   function methodNote() {
     return form.method === METHODS[1]
-      ? 'Express mail has an extra fee. We’ll confirm the exact amount before you pay.'
-      : 'Edmonton area only: ' + money(DELIVERY_FEE) + ' delivery + ' + money(FUEL_FEE) + ' ' + FUEL_NAME + ', free on orders over ' + money(FREE_OVER) + '. Outside Edmonton? Choose Express mail.';
+      ? 'Express mail is charged at the Canada Post rate for your address. We’ll confirm the exact amount before you pay.'
+      : 'Edmonton area only: ' + money(DELIVERY_FEE) + ' in-person delivery, free on orders of ' + money(FREE_OVER) + ' or more. Outside Edmonton? Choose Express mail.';
   }
   function field(id, text, control) {
     return '<div class="order-field"><label for="' + id + '">' + text + '</label>' + control + '</div>';
@@ -344,10 +343,9 @@
     });
     var f = fees(t.sum, form.method);
     lines.push('', 'Items: ' + money(t.sum));
-    if (f.express) lines.push('Express mail: quoted on confirm');
-    else if (f.free) lines.push('Edmonton delivery: Free');
-    else lines.push('Edmonton delivery: ' + money(f.delivery), FUEL_NAME + ': ' + money(f.fuel));
-    lines.push('Estimated total: ' + money(t.sum + f.delivery + f.fuel) + ' CAD' + (f.express ? ' + express mail' : '') + ' (final total confirmed before payment)');
+    if (f.express) lines.push('Express mail: Canada Post rate (confirmed before payment)');
+    else lines.push('In-person delivery: ' + (f.free ? 'Free' : money(f.delivery)));
+    lines.push('Estimated total: ' + money(t.sum + f.delivery + f.fuel) + ' CAD' + (f.express ? ' + Canada Post express postage' : '') + ' (final total confirmed before payment)');
     if (form.notes.trim()) lines.push('', 'Notes: ' + form.notes.trim());
     lines.push('', 'Payment: Interac e-Transfer after confirmation.', 'Customer confirmed: research purposes only.');
     return lines.join('\n');

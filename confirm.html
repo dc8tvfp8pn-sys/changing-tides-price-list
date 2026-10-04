@@ -140,7 +140,7 @@
       expired: 'This confirm link has expired. Reply to the customer from the order email instead.',
       no_customer_email: 'This customer didn’t give an email. Contact them by phone.',
       pay_email: 'Enter the email that receives your e-Transfers.',
-      fee_required: 'Enter the express mail fee.',
+      fee_required: 'Enter the Canada Post express postage.',
       security_qa: 'Auto-deposit is off, so add a security question and answer.',
       send_failed: 'Sending failed. Try again in a minute.',
       rate_limited: 'Too many tries. Wait a few minutes.'
@@ -162,7 +162,7 @@
       }).join('');
       $('cust').innerHTML = '<b>Customer:</b> ' + esc(order.name) + '<br><b>Email:</b> ' + esc(order.email || '—') + '<br><b>Phone:</b> ' + esc(order.phone || '—') +
         '<br><b>Delivery:</b> ' + esc(order.method) + '<br><b>Address:</b> ' + esc(order.address) + (order.notes ? '<br><b>Notes:</b> ' + esc(order.notes) : '');
-      if (order.express) { $('feeLabel').textContent = 'Express mail fee'; $('feeName').textContent = 'Express mail'; $('feeHint').textContent = 'Required for express mail.'; }
+      if (order.express) { $('feeLabel').textContent = 'Canada Post express postage'; $('feeName').textContent = 'Express mail (Canada Post)'; $('feeHint').textContent = 'Enter the Canada Post rate for this address.'; }
       else { $('feeWrap').hidden = true; }
       $('payEmail').value = load('toc_pay_email') || order.payEmailDefault || '';
       if (load('toc_autodeposit') === 'no') setAD(false);
@@ -177,9 +177,9 @@
       $('sub').textContent = money(order.subtotal);
       var l = order.local;
       if (l) {
-        $('feeName').textContent = 'Edmonton delivery';
+        $('feeName').textContent = 'In-person delivery';
         $('feeShow').textContent = l.free ? 'Free' : money(l.delivery);
-        $('fuelRow').hidden = l.free; $('fuelName').textContent = l.fuelName; $('fuelShow').textContent = money(l.fuel);
+        $('fuelRow').hidden = true;
       } else { $('fuelRow').hidden = true; $('feeShow').textContent = fee() ? money(fee()) : 'enter fee'; }
       $('total').textContent = money(order.subtotal + extra()) + ' CAD';
     }
