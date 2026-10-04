@@ -1,0 +1,344 @@
+/* ================= TIDES OF CHANGE — ORDER NOW =================
+   Prices are read from the existing .price-row markup (single price source).
+   Sending: opens the customer's email app with a pre-written order to
+   ORDER_EMAIL. ORDER_ENDPOINT is reserved for a future automatic sender. */
+(function () {
+  'use strict';
+
+  var ORDER_EMAIL = 'orders@tidesofchange.ca';
+  var ORDER_ENDPOINT = null; // set when an automatic sender is approved
+  var STORE_KEY = 'toc-order-v1';
+  var MAX_QTY = 20;
+
+  var main = document.getElementById('pricelist');
+  if (!main) return;
+
+  // ---------- state ----------
+  var cart = {}; // key -> {name, strength, price, qty}
+  try {
+    var saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || '{}');
+    if (saved && typeof saved === 'object') cart = saved;
+  } catch (e) { cart = {}; }
+
+  function save() {
+    try { window.localStorage.setItem(STORE_KEY, JSON.stringify(cart)); } catch (e) { /* private mode: keep in memory */ }
+  }
+
+  function rowInfo(row) {
+    var n = row.querySelector('.name');
+    var s = row.querySelector('.strength');
+    var p = row.querySelector('.price');
+    if (!n || !p) return null;
+    var name = n.textContent.trim();
+    var strength = s ? s.textContent.trim() : '';
+    var price = parseFloat(p.textContent.replace(/[^0-9.]/g, ''));
+    if (!isFinite(price)) return null;
+    return { key: (name + '|' + strength).toLowerCase(), name: name, strength: strength, price: price };
+  }
+
+  function money(n) { return '$' + (Math.round(n * 100) / 100).toFixed(n % 1 ? 2 : 0); }
+  function label(it) { return it.strength ? it.name + ' ' + it.strength : it.name; }
+
+  function items() {
+    return Object.keys(cart).map(function (k) { return cart[k]; }).filter(function (it) { return it.qty > 0; });
+  }
+  function totals() {
+    var list = items(), count = 0, sum = 0;
+    list.forEach(function (it) { count += it.qty; sum += it.qty * it.price; });
+    return { list: list, count: count, sum: sum };
+  }
+
+  // Drop saved items whose price row no longer exists, and refresh prices from the page.
+  var live = {};
+  Array.prototype.forEach.call(main.querySelectorAll('.price-row'), function (row) {
+    var info = rowInfo(row);
+    if (info) live[info.key] = info;
+  });
+  Object.keys(cart).forEach(function (k) {
+    if (!live[k]) { delete cart[k]; return; }
+    cart[k].price = live[k].price;
+    cart[k].name = live[k].name;
+    cart[k].strength = live[k].strength;
+  });
+
+  // ---------- per-row Add buttons ----------
+  function decorate(row) {
+    if (row.querySelector('.add-btn')) return;
+    var info = rowInfo(row);
+    if (!info) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'add-btn';
+    btn.setAttribute('data-key', info.key);
+    btn.setAttribute('data-testid', 'add-' + info.key.replace(/[^a-z0-9]+/g, '-'));
+    row.appendChild(btn);
+    paintBtn(btn);
+  }
+  function paintBtn(btn) {
+    var k = btn.getAttribute('data-key');
+    var info = live[k];
+    var q = cart[k] ? cart[k].qty : 0;
+    btn.textContent = q ? '✓ ' + q : 'Add';
+    btn.classList.toggle('in-cart', q > 0);
+    btn.setAttribute('aria-label', q ? (label(info) + ': ' + q + ' in order. Add one more') : ('Add ' + label(info) + ' to order'));
+  }
+  function paintAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('.add-btn'), paintBtn);
+    paintBar();
+    if (!sheet.hidden) renderSheet();
+  }
+
+  Array.prototype.forEach.call(main.querySelectorAll('.price-row'), decorate);
+  // The A–Z view clones rows later; decorate those clones as they appear.
+  var allList = document.getElementById('all-products-list');
+  if (allList && 'MutationObserver' in window) {
+    new MutationObserver(function () {
+      Array.prototype.forEach.call(allList.querySelectorAll('.price-row'), decorate);
+      Array.prototype.forEach.call(allList.querySelectorAll('.add-btn'), paintBtn);
+    }).observe(allList, { childList: true });
+  }
+
+  main.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.add-btn');
+    if (!btn) return;
+    var k = btn.getAttribute('data-key');
+    var info = live[k];
+    if (!info) return;
+    if (!cart[k]) cart[k] = { name: info.name, strength: info.strength, price: info.price, qty: 0 };
+    cart[k].qty = Math.min(MAX_QTY, cart[k].qty + 1);
+    save();
+    paintAll();
+  });
+
+  // ---------- header CTA + floating bar ----------
+  var header = document.querySelector('.header-inner');
+  if (header) {
+    var wrap = document.createElement('div');
+    wrap.className = 'order-cta-wrap';
+    wrap.innerHTML = '<button type="button" class="order-cta" id="orderNowTop" data-testid="order-now-top">Order now</button>';
+    header.appendChild(wrap);
+  }
+
+  var bar = document.createElement('div');
+  bar.className = 'order-bar';
+  bar.setAttribute('role', 'region');
+  bar.setAttribute('aria-label', 'Your order');
+  bar.innerHTML =
+    '<div class="order-bar-sum"><span class="order-bar-count" id="orderBarCount"></span>' +
+    '<span class="order-bar-total" id="orderBarTotal"></span></div>' +
+    '<button type="button" class="order-cta" id="orderNowBar" data-testid="order-now-bar">Review &amp; order</button>';
+  document.body.appendChild(bar);
+
+  function paintBar() {
+    var t = totals();
+    document.getElementById('orderBarCount').textContent = t.count + (t.count === 1 ? ' item' : ' items');
+    document.getElementById('orderBarTotal').textContent = money(t.sum);
+    var show = t.count > 0;
+    bar.classList.toggle('visible', show);
+    document.body.classList.toggle('has-order', show);
+  }
+
+  // ---------- order sheet ----------
+  var sheet = document.createElement('div');
+  sheet.className = 'order-sheet';
+  sheet.hidden = true;
+  sheet.innerHTML =
+    '<div class="order-panel" role="dialog" aria-modal="true" aria-labelledby="orderTitle">' +
+      '<div class="order-head"><h2 class="order-title" id="orderTitle">Your order</h2>' +
+      '<button type="button" class="order-close" id="orderClose" aria-label="Close">×</button></div>' +
+      '<div id="orderBody"></div>' +
+    '</div>';
+  document.body.appendChild(sheet);
+  var body = sheet.querySelector('#orderBody');
+  var lastFocus = null;
+  var form = { name: '', phone: '', email: '', method: 'Pickup', notes: '', ack: false };
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  function renderSheet() {
+    var t = totals();
+    var rows = t.list.length ? t.list.map(function (it) {
+      var k = (it.name + '|' + it.strength).toLowerCase();
+      return '<li class="order-item">' +
+        '<div class="order-item-info"><span class="order-item-name">' + esc(label(it)) + '</span>' +
+        '<span class="order-item-meta">' + money(it.price) + ' each</span></div>' +
+        '<div class="qty"><button type="button" data-dec="' + esc(k) + '" aria-label="One less ' + esc(label(it)) + '">−</button>' +
+        '<output aria-live="polite">' + it.qty + '</output>' +
+        '<button type="button" data-inc="' + esc(k) + '" aria-label="One more ' + esc(label(it)) + '">+</button></div>' +
+        '<span class="order-line-total">' + money(it.qty * it.price) + '</span></li>';
+    }).join('') : '<li class="order-empty">Nothing added yet. Tap <strong>Add</strong> beside any item on the price list.</li>';
+
+    body.innerHTML =
+      '<p class="order-sub">Pick your items, add your details, and send. We confirm every order personally.</p>' +
+      '<ul class="order-items">' + rows + '</ul>' +
+      (t.list.length ?
+        '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum) + '</span></div>' +
+        '<p class="order-total-note">CAD. Final total confirmed by our team before payment.</p>' +
+        '<form class="order-form" id="orderForm" novalidate>' +
+          field('ofName', 'Name', '<input id="ofName" name="name" autocomplete="name" required value="' + esc(form.name) + '">') +
+          field('ofPhone', 'Phone', '<input id="ofPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" value="' + esc(form.phone) + '">') +
+          field('ofEmail', 'Email', '<input id="ofEmail" name="email" type="email" autocomplete="email" inputmode="email" value="' + esc(form.email) + '">') +
+          field('ofMethod', 'Pickup or delivery', '<select id="ofMethod" name="method">' +
+            ['Pickup', 'Delivery', 'Not sure yet'].map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
+          field('ofNotes', 'Notes (optional)', '<textarea id="ofNotes" name="notes" placeholder="Anything we should know">' + esc(form.notes) + '</textarea>') +
+          '<label class="order-check"><input type="checkbox" id="ofAck"' + (form.ack ? ' checked' : '') + '> I understand these products are for research purposes only.</label>' +
+          '<p class="order-pay"><strong>Payment:</strong> Interac e-Transfer after we confirm your order. No card details needed.</p>' +
+          '<p class="order-error" id="orderError" role="alert"></p>' +
+          '<button type="submit" class="order-cta order-send" data-testid="order-send">Send order</button>' +
+          '<div class="order-alt"><button type="button" class="order-link" id="orderCopy">Copy order</button>' +
+          '<button type="button" class="order-link" id="orderClear">Clear order</button></div>' +
+          '<p class="order-status" id="orderStatus" role="status"></p>' +
+        '</form>'
+      : '');
+
+    var f = body.querySelector('#orderForm');
+    if (f) {
+      f.addEventListener('input', capture);
+      f.addEventListener('change', capture);
+      f.addEventListener('submit', submit);
+      body.querySelector('#orderCopy').addEventListener('click', copyOrder);
+      body.querySelector('#orderClear').addEventListener('click', function () {
+        cart = {}; save(); paintAll();
+      });
+    }
+  }
+  function field(id, text, control) {
+    return '<div class="order-field"><label for="' + id + '">' + text + '</label>' + control + '</div>';
+  }
+  function capture() {
+    var g = function (id) { var el = body.querySelector('#' + id); return el ? el.value : ''; };
+    form.name = g('ofName'); form.phone = g('ofPhone'); form.email = g('ofEmail');
+    form.method = g('ofMethod') || form.method; form.notes = g('ofNotes');
+    var a = body.querySelector('#ofAck'); form.ack = !!(a && a.checked);
+  }
+
+  body.addEventListener('click', function (e) {
+    var inc = e.target.getAttribute && e.target.getAttribute('data-inc');
+    var dec = e.target.getAttribute && e.target.getAttribute('data-dec');
+    var k = inc || dec;
+    if (!k || !cart[k]) return;
+    capture();
+    cart[k].qty = Math.max(0, Math.min(MAX_QTY, cart[k].qty + (inc ? 1 : -1)));
+    if (!cart[k].qty) delete cart[k];
+    save();
+    paintAll();
+  });
+
+  function orderText() {
+    var t = totals();
+    var lines = [
+      'NEW ORDER REQUEST — Tides of Change',
+      '',
+      'Name: ' + form.name.trim(),
+      'Phone: ' + (form.phone.trim() || '—'),
+      'Email: ' + (form.email.trim() || '—'),
+      'Pickup or delivery: ' + form.method,
+      '',
+      'Items:'
+    ];
+    t.list.forEach(function (it) {
+      lines.push('• ' + it.qty + ' × ' + label(it) + ' @ ' + money(it.price) + ' = ' + money(it.qty * it.price));
+    });
+    lines.push('', 'Estimated total: ' + money(t.sum) + ' CAD (final total confirmed before payment)');
+    if (form.notes.trim()) lines.push('', 'Notes: ' + form.notes.trim());
+    lines.push('', 'Payment: Interac e-Transfer after confirmation.', 'Customer confirmed: research purposes only.');
+    return lines.join('\n');
+  }
+
+  function validate() {
+    capture();
+    if (!totals().count) return 'Add at least one item.';
+    if (!form.name.trim()) return 'Please enter your name.';
+    if (!form.phone.trim() && !form.email.trim()) return 'Please enter a phone number or email so we can confirm.';
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'That email address doesn’t look right.';
+    if (!form.ack) return 'Please tick the research-purposes box.';
+    return '';
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    var err = validate();
+    var errEl = body.querySelector('#orderError');
+    errEl.textContent = err;
+    if (err) return;
+    var subject = 'Order request — ' + form.name.trim();
+    var href = 'mailto:' + ORDER_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(orderText());
+    window.location.href = href;
+    showDone();
+  }
+
+  function showDone() {
+    body.innerHTML =
+      '<div class="order-done">' +
+        '<h3>Almost done — tap Send in your email app</h3>' +
+        '<p>Your email app should have opened with the order written out to <strong>' + ORDER_EMAIL + '</strong>. Just tap <strong>Send</strong>.</p>' +
+        '<p>We’ll reply to confirm your order and send Interac e-Transfer details.</p>' +
+        '<p>No email app opened? Copy the order and email it to ' + ORDER_EMAIL + '.</p>' +
+        '<div class="order-alt"><button type="button" class="order-link" id="doneCopy">Copy order</button>' +
+        '<button type="button" class="order-link" id="doneBack">Back to order</button>' +
+        '<button type="button" class="order-link" id="doneClear">Start a new order</button></div>' +
+        '<p class="order-status" id="orderStatus" role="status"></p>' +
+      '</div>';
+    body.querySelector('#doneCopy').addEventListener('click', copyOrder);
+    body.querySelector('#doneBack').addEventListener('click', renderSheet);
+    body.querySelector('#doneClear').addEventListener('click', function () { cart = {}; save(); paintAll(); closeSheet(); });
+  }
+
+  function copyOrder() {
+    capture();
+    var text = 'To: ' + ORDER_EMAIL + '\n\n' + orderText();
+    var status = body.querySelector('#orderStatus');
+    function ok() { if (status) status.textContent = 'Order copied — paste it into an email to ' + ORDER_EMAIL; }
+    function legacy() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta); ok();
+      } catch (e) { if (status) status.textContent = 'Couldn’t copy automatically.'; }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, legacy);
+    else legacy();
+  }
+
+  function openSheet() {
+    lastFocus = document.activeElement;
+    renderSheet();
+    sheet.hidden = false;
+    document.body.style.overflow = 'hidden';
+    var c = sheet.querySelector('#orderClose');
+    if (c) c.focus();
+  }
+  function closeSheet() {
+    sheet.hidden = true;
+    document.body.style.overflow = '';
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  document.addEventListener('click', function (e) {
+    var id = e.target && e.target.id;
+    if (id === 'orderNowTop') {
+      if (totals().count) openSheet();
+      else {
+        var nav = document.getElementById('goalnav');
+        if (nav) nav.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        flashHint();
+      }
+    }
+    if (id === 'orderNowBar') openSheet();
+    if (id === 'orderClose') closeSheet();
+  });
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) closeSheet(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
+
+  function flashHint() {
+    var status = document.getElementById('shareStatus');
+    if (!status) return;
+    status.textContent = 'Tap “Add” beside any item to start your order';
+    status.classList.add('visible');
+    window.setTimeout(function () { status.classList.remove('visible'); }, 3200);
+  }
+
+  paintAll();
+})();
