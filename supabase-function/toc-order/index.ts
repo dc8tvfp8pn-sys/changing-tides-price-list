@@ -14,7 +14,7 @@ const LOGO = "https://tidesofchange.ca/assets/icon-512-v9.png";
 // tiny navy image behind the normal colour.
 const EMAIL_ART = (Deno.env.get("TOC_EMAIL_ART") || "https://tidesofchange.ca/assets/email/").trim();
 const BG_DEEP = `${EMAIL_ART}navy-deep.png`, BG_CARD = `${EMAIL_ART}navy.png`, BG_PANEL = `${EMAIL_ART}panel.png`;
-const HEADER_IMG = `${EMAIL_ART}header-v1.png`;
+const HEADER_IMG = `${EMAIL_ART}header-v2.png`;
 const CONFIRM_URL = (Deno.env.get("TOC_CONFIRM_URL") || "https://tidesofchange.ca/confirm.html").trim();
 // Edmonton delivery pricing. FREE_OVER = items subtotal at/above which delivery + fuel are free (null = never).
 const DELIVERY_FEE = 20, FUEL_FEE = 0; // $20 in-person delivery includes the Rising Tide fuel surcharge
