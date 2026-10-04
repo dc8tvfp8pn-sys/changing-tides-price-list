@@ -7,22 +7,14 @@
 
   var ORDER_EMAIL = 'orders@tidesofchange.ca';
   var ORDER_ENDPOINT = null; // set when an automatic sender is approved
-  var STORE_KEY = 'toc-order-v1';
   var MAX_QTY = 20;
 
   var main = document.getElementById('pricelist');
   if (!main) return;
 
   // ---------- state ----------
-  var cart = {}; // key -> {name, strength, price, qty}
-  try {
-    var saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || '{}');
-    if (saved && typeof saved === 'object') cart = saved;
-  } catch (e) { cart = {}; }
-
-  function save() {
-    try { window.localStorage.setItem(STORE_KEY, JSON.stringify(cart)); } catch (e) { /* private mode: keep in memory */ }
-  }
+  var cart = {}; // key -> {name, strength, price, qty} — kept in memory for this visit
+  function save() { /* in-memory only */ }
 
   function rowInfo(row) {
     var n = row.querySelector('.name');
