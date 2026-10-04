@@ -192,3 +192,9 @@ body.has-order .warnings { padding-bottom: 150px; }
 .ct-go[disabled] { opacity: .7; cursor: progress; }
 
 .order-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.order-fee-row { display:flex; justify-content:space-between; gap:12px; padding:3px 2px; font-size:.9rem; color:var(--text-2); }
+.order-fee-row span:last-child { color:var(--text); font-weight:600; white-space:nowrap; }
+.order-fee-row .free { color:var(--teal) !important; }
+.order-totals .order-total-row { margin-top:6px; }
+.fuel-note { border-left:3px solid var(--orange); padding-left:8px; }
