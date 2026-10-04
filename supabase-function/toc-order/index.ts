@@ -109,22 +109,60 @@ Deno.serve(async (req) => {
   ].join("\n");
 
   const rows = clean.map((i) =>
-    `<tr><td style="padding:6px 0">${i.qty} × ${esc(i.name)}${i.size ? " " + esc(i.size) : ""}</td><td style="padding:6px 0;text-align:right">${money(i.qty * i.price)}</td></tr>`
+    `<tr><td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#f2f6fb">${i.qty} &times; ${esc(i.name)}${i.size ? ` <span style="color:#c4d2e4">${esc(i.size)}</span>` : ""}</td><td align="right" style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#01c88a;text-align:right">${money(i.qty * i.price)}</td></tr>`
   ).join("");
-  const wrap = (title: string, intro: string, extra: string) => `<!doctype html><html><body style="margin:0;background:#0b1220;font-family:Arial,Helvetica,sans-serif;color:#e6edf6">
-<div style="max-width:560px;margin:0 auto;padding:24px">
-<div style="font-size:20px;font-weight:700;letter-spacing:.08em;color:#2ee6c5">TIDES OF CHANGE</div>
-<h1 style="font-size:20px;margin:16px 0 8px">${title}</h1><p style="margin:0 0 16px;color:#b8c4d6">${intro}</p>
-<div style="background:#111b2e;border:1px solid #1f2d47;border-radius:12px;padding:16px">
-<div style="font-size:12px;color:#8aa0bd">Order ${ref}</div>
-<table style="width:100%;border-collapse:collapse;margin-top:8px;color:#e6edf6">${rows}</table>
-<div style="border-top:1px solid #1f2d47;margin-top:8px;padding-top:8px;font-weight:700">${esc(totalLine)}</div>
-</div>${extra}
-<p style="margin-top:20px;font-size:12px;color:#8aa0bd">For research purposes only. Payment by Interac e-Transfer after we confirm your order.</p>
-</div></body></html>`;
+  const LOGO = "https://dc8tvfp8pn-sys.github.io/changing-tides-price-list/assets/icon-512-v9.png";
+  const PAY_EMAIL = (Deno.env.get("TOC_ETRANSFER_EMAIL") || "").trim();
+  const payBox = (forCustomer: boolean) => `
+<tr><td style="padding:16px 24px 0 24px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0e1a30" style="background:#0e1a30;border:1px solid #1c2c48;border-left:4px solid #ff9500;border-radius:12px">
+<tr><td style="padding:14px 16px;font-family:Arial,Helvetica,sans-serif;color:#f2f6fb;font-size:14px;line-height:1.55">
+<div style="font-weight:700;color:#ff9500;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Payment &middot; Interac e-Transfer</div>
+${forCustomer
+  ? `<div style="color:#c4d2e4">Please don&rsquo;t send payment yet. Once we confirm your order${express ? " and the express mail fee" : ""}, send your Interac e-Transfer for the final total${PAY_EMAIL ? ` to <strong style="color:#f2f6fb">${esc(PAY_EMAIL)}</strong>` : ""}.<br>Put your order number <strong style="color:#f2f6fb">${ref}</strong> in the e-Transfer message.</div>`
+  : `<div style="color:#c4d2e4">Customer pays by Interac e-Transfer after you confirm${PAY_EMAIL ? ` (to ${esc(PAY_EMAIL)})` : ""}, quoting ${ref}.</div>`}
+</td></tr></table></td></tr>`;
+  const wrap = (title: string, intro: string, extra: string, forCustomer: boolean) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark only"><meta name="supported-color-schemes" content="dark">
+<style>:root{color-scheme:dark only} body{background-color:#060e1c}</style></head>
+<body bgcolor="#060e1c" style="margin:0;padding:0;background:#060e1c">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#060e1c" style="background:#060e1c"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a1424" style="max-width:560px;background:#0a1424;border:1px solid #1c2c48;border-radius:16px;overflow:hidden">
+<tr><td align="center" style="padding:26px 24px 10px 24px">
+<img src="${LOGO}" width="64" height="64" alt="Tides of Change" style="display:block;border:0;border-radius:14px">
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;letter-spacing:.14em;color:#f2f6fb;margin-top:12px">TIDES OF CHANGE</div>
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#01c88a;margin-top:4px">Research Supplement Price List</div>
+</td></tr>
+<tr><td style="padding:8px 0 0 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td height="5" bgcolor="#22c7e6" style="background:#22c7e6;font-size:0;line-height:0">&nbsp;</td>
+<td height="5" bgcolor="#01c88a" style="background:#01c88a;font-size:0;line-height:0">&nbsp;</td>
+<td height="5" bgcolor="#0b9bdc" style="background:#0b9bdc;font-size:0;line-height:0">&nbsp;</td>
+<td height="5" bgcolor="#ff9500" style="background:#ff9500;font-size:0;line-height:0">&nbsp;</td>
+</tr></table></td></tr>
+<tr><td style="padding:22px 24px 0 24px;font-family:Arial,Helvetica,sans-serif">
+<div style="font-size:20px;font-weight:700;color:#f2f6fb;line-height:1.3">${title}</div>
+<div style="font-size:15px;color:#c4d2e4;line-height:1.55;margin-top:8px">${intro}</div>
+</td></tr>
+<tr><td style="padding:16px 24px 0 24px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0e1a30" style="background:#0e1a30;border:1px solid #1c2c48;border-radius:12px">
+<tr><td style="padding:14px 16px;font-family:Arial,Helvetica,sans-serif">
+<div style="font-size:12px;color:#22c7e6;letter-spacing:.06em">ORDER ${ref}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px">${rows}</table>
+<div style="border-top:1px solid #1c2c48;margin-top:8px;padding-top:10px;font-size:15px;font-weight:700;color:#f2f6fb">Estimated total: <span style="color:#01c88a">${money(total)} CAD</span>${express ? " + express mail fee" : ""}</div>
+<div style="font-size:12px;color:#c4d2e4;margin-top:4px">Final total confirmed by our team before payment.</div>
+</td></tr></table></td></tr>
+${payBox(forCustomer)}
+${extra}
+<tr><td style="padding:20px 24px 24px 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#8ea2bf;line-height:1.5">
+For research purposes only. Questions? Reply to this email or write to <a href="mailto:orders@tidesofchange.ca" style="color:#22c7e6">orders@tidesofchange.ca</a>.
+</td></tr>
+</table></td></tr></table></body></html>`;
 
   const ownerHtml = wrap(`New order from ${esc(name)}`, "Reply to this email to answer the customer directly.",
-    `<div style="margin-top:16px;line-height:1.6;color:#b8c4d6">Phone: ${esc(phone || "—")}<br>Email: ${esc(email || "—")}<br>Delivery: ${esc(method)}<br>Address: ${esc(address)}${notes ? "<br>Notes: " + esc(notes) : ""}</div>`);
+    `<tr><td style="padding:16px 24px 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#c4d2e4">
+<strong style="color:#f2f6fb">Phone:</strong> ${esc(phone || "—")}<br><strong style="color:#f2f6fb">Email:</strong> ${esc(email || "—")}<br>
+<strong style="color:#f2f6fb">Delivery:</strong> ${esc(method)}<br><strong style="color:#f2f6fb">Address:</strong> ${esc(address)}${notes ? `<br><strong style="color:#f2f6fb">Notes:</strong> ${esc(notes)}` : ""}</td></tr>`, false);
 
   const sentOwner = await send(apiKey, {
     to: [ORDER_TO],
@@ -140,9 +178,10 @@ Deno.serve(async (req) => {
     customerCopy = await send(apiKey, {
       to: [email],
       subject: `We got your order ${ref} — Tides of Change`,
-      text_body: `Thanks ${name}, we received your order request.\n\n${lines.join("\n")}\n\n${totalLine}\n\nWe'll reply to confirm your order${express ? ", the express mail fee" : ""} and send Interac e-Transfer details.\n\nTides of Change — research purposes only.`,
+      text_body: `Thanks ${name}, we received your order request.\n\n${lines.join("\n")}\n\n${totalLine}\n\nPayment: Interac e-Transfer. Please don't send payment yet. Once we confirm your order${express ? " and the express mail fee" : ""}, send your e-Transfer for the final total${PAY_EMAIL ? " to " + PAY_EMAIL : ""} and put ${ref} in the message.\n\nTides of Change — research purposes only.`,
       html_body: wrap(`Thanks, ${esc(name)} — we got your order`,
-        `We'll reply to confirm your order${express ? ", the express mail fee" : ""} and send Interac e-Transfer details.`, ""),
+        `We'll reply to confirm your order${express ? " and the express mail fee" : ""}. Here&rsquo;s what you asked for:`,
+        `<tr><td style="padding:16px 24px 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#c4d2e4"><strong style="color:#f2f6fb">Delivery:</strong> ${esc(method)}<br><strong style="color:#f2f6fb">Address:</strong> ${esc(address)}</td></tr>`, true),
       custom_headers: [{ header: "Reply-To", value: ORDER_TO }],
     });
   }
