@@ -7,6 +7,9 @@
 
   var ORDER_EMAIL = 'orders@tidesofchange.ca';
   var ORDER_ENDPOINT = null; // set when an automatic sender is approved
+  // Optional Changing Tides account autofill (public publishable key; RLS limits reads to the signed-in user)
+  var CT_URL = 'https://gvexlysmyqitmvexfxep.supabase.co';
+  var CT_KEY = 'sb_publishable_R572xTOvVsbVmsJiU_wCWg_PBw0Wo7J';
   var MAX_QTY = 20;
 
   var main = document.getElementById('pricelist');
@@ -143,6 +146,7 @@
   document.body.appendChild(sheet);
   var body = sheet.querySelector('#orderBody');
   var lastFocus = null;
+  var ct = { open: false, busy: false, msg: '', ok: false };
   var METHODS = ['Delivery', 'Express mail (extra fee)'];
   var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
 
@@ -167,6 +171,7 @@
       (t.list.length ?
         '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum) + '</span></div>' +
         '<p class="order-total-note">CAD, before any express mail fee. Final total confirmed by our team before payment.</p>' +
+        ctBlock() +
         '<form class="order-form" id="orderForm" novalidate>' +
           field('ofName', 'Name', '<input id="ofName" name="name" autocomplete="name" required value="' + esc(form.name) + '">') +
           field('ofPhone', 'Phone', '<input id="ofPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" value="' + esc(form.phone) + '">') +
@@ -192,11 +197,80 @@
       f.addEventListener('change', capture);
       f.addEventListener('submit', submit);
       body.querySelector('#orderCopy').addEventListener('click', copyOrder);
+      var o = body.querySelector('#ctOpen'); if (o) o.addEventListener('click', function () { capture(); ct.open = true; ct.msg = ''; renderSheet(); var e = body.querySelector('#ctEmail'); if (e) e.focus(); });
+      var c = body.querySelector('#ctCancel'); if (c) c.addEventListener('click', function () { capture(); ct.open = false; ct.msg = ''; renderSheet(); });
+      var g = body.querySelector('#ctGo'); if (g) g.addEventListener('click', ctSignInAndFill);
+      var cp = body.querySelector('#ctPass'); if (cp) cp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ctSignInAndFill(); } });
       body.querySelector('#orderClear').addEventListener('click', function () {
         cart = {}; save(); paintAll();
       });
     }
   }
+  function ctBlock() {
+    if (ct.ok) return '<div class="ct-fill ct-done" role="status">' + esc(ct.msg) + '</div>';
+    if (!ct.open) {
+      return '<div class="ct-fill"><button type="button" class="order-link ct-toggle" id="ctOpen" data-testid="ct-open">Have a Changing Tides account? Fill in my details</button></div>';
+    }
+    return '<div class="ct-fill ct-open">' +
+      '<p class="ct-title">Fill in from your Changing Tides account</p>' +
+      '<p class="ct-note">Optional. We only copy your name and email into this form, then sign you straight back out. Nothing else is shared.</p>' +
+      field('ctEmail', 'Changing Tides email', '<input id="ctEmail" type="email" autocomplete="username" inputmode="email">') +
+      field('ctPass', 'Password', '<input id="ctPass" type="password" autocomplete="current-password">') +
+      '<p class="order-error" id="ctError" role="alert">' + esc(ct.msg) + '</p>' +
+      '<div class="order-alt"><button type="button" class="order-cta ct-go" id="ctGo" data-testid="ct-go"' + (ct.busy ? ' disabled' : '') + '>' + (ct.busy ? 'Checking…' : 'Sign in &amp; fill') + '</button>' +
+      '<button type="button" class="order-link" id="ctCancel">Cancel</button></div>' +
+    '</div>';
+  }
+
+  function ctFetch(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ apikey: CT_KEY, 'Content-Type': 'application/json' }, opts.headers || {});
+    return fetch(CT_URL + path, opts).then(function (r) {
+      return r.text().then(function (t) { var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {} return { ok: r.ok, status: r.status, json: j }; });
+    });
+  }
+
+  function ctSignInAndFill() {
+    capture();
+    var em = (body.querySelector('#ctEmail') || {}).value || '';
+    var pw = (body.querySelector('#ctPass') || {}).value || '';
+    if (!em.trim() || !pw) { ct.msg = 'Enter your Changing Tides email and password.'; renderSheet(); return; }
+    ct.busy = true; ct.msg = ''; renderSheet();
+    var token = null;
+    ctFetch('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: em.trim(), password: pw }) })
+      .then(function (res) {
+        if (!res.ok || !res.json || !res.json.access_token) {
+          var code = res.json && (res.json.error_code || res.json.code || res.json.error);
+          var m = res.json && (res.json.msg || res.json.error_description || res.json.message) || '';
+          if (/not.?confirmed/i.test(String(code) + ' ' + m)) throw new Error('Please confirm your Changing Tides email first, then try again.');
+          if (res.status === 400 || res.status === 401) throw new Error('That email and password didn’t match a Changing Tides account.');
+          throw new Error('Couldn’t reach Changing Tides right now. You can fill the form in by hand.');
+        }
+        token = res.json.access_token;
+        var user = res.json.user || {};
+        var meta = user.user_metadata || {};
+        return ctFetch('/rest/v1/profiles?select=display_name&id=eq.' + encodeURIComponent(user.id), { headers: { Authorization: 'Bearer ' + token } })
+          .then(function (p) {
+            var dn = p.ok && Array.isArray(p.json) && p.json[0] && p.json[0].display_name;
+            return { email: user.email || em.trim(), name: (dn || meta.display_name || meta.full_name || '').trim() };
+          });
+      })
+      .then(function (info) {
+        var filled = [];
+        if (info.name && !/@/.test(info.name)) { form.name = info.name; filled.push('name'); }
+        if (info.email) { form.email = info.email; filled.push('email'); }
+        ct.ok = true; ct.busy = false;
+        ct.msg = 'Filled in your ' + (filled.join(' and ') || 'details') + ' from Changing Tides. You’ve been signed back out. Please add your phone and delivery address.';
+      })
+      .catch(function (err) {
+        ct.busy = false; ct.msg = err && err.message ? err.message : 'Something went wrong. You can fill the form in by hand.';
+      })
+      .then(function () {
+        if (token) ctFetch('/auth/v1/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + token } }).catch(function () {});
+        renderSheet();
+      });
+  }
+
   function methodNote() {
     return form.method === METHODS[1]
       ? 'Express mail has an extra fee. We’ll confirm the exact amount before you pay.'
