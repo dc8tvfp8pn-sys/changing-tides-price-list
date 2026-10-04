@@ -6,7 +6,7 @@
   'use strict';
 
   var ORDER_EMAIL = 'orders@tidesofchange.ca';
-  var ORDER_ENDPOINT = null; // set when an automatic sender is approved
+  var ORDER_ENDPOINT = 'https://gvexlysmyqitmvexfxep.supabase.co/functions/v1/toc-order'; // one-tap sender
   // Optional Changing Tides account autofill (public publishable key; RLS limits reads to the signed-in user)
   var CT_URL = 'https://gvexlysmyqitmvexfxep.supabase.co';
   var CT_KEY = 'sb_publishable_R572xTOvVsbVmsJiU_wCWg_PBw0Wo7J';
@@ -77,10 +77,10 @@
     btn.classList.toggle('in-cart', q > 0);
     btn.setAttribute('aria-label', q ? (label(info) + ': ' + q + ' in order. Add one more') : ('Add ' + label(info) + ' to order'));
   }
-  function paintAll() {
+  function paintAll(keepSheet) {
     Array.prototype.forEach.call(document.querySelectorAll('.add-btn'), paintBtn);
     paintBar();
-    if (!sheet.hidden) renderSheet();
+    if (!sheet.hidden && !keepSheet) renderSheet();
   }
 
   Array.prototype.forEach.call(main.querySelectorAll('.price-row'), decorate);
@@ -182,6 +182,7 @@
           field('ofAddress', 'Delivery address', '<textarea id="ofAddress" name="address" autocomplete="street-address" placeholder="Street, city, province, postal code">' + esc(form.address) + '</textarea>') +
           field('ofNotes', 'Notes (optional)', '<textarea id="ofNotes" name="notes" placeholder="Anything we should know">' + esc(form.notes) + '</textarea>') +
           '<label class="order-check"><input type="checkbox" id="ofAck"' + (form.ack ? ' checked' : '') + '> I understand these products are for research purposes only.</label>' +
+          '<div class="order-hp" aria-hidden="true"><label>Leave blank<input id="ofWebsite" name="website" tabindex="-1" autocomplete="off"></label></div>' +
           '<p class="order-pay"><strong>Payment:</strong> Interac e-Transfer after we confirm your order. No card details needed.</p>' +
           '<p class="order-error" id="orderError" role="alert"></p>' +
           '<button type="submit" class="order-cta order-send" data-testid="order-send">Send order</button>' +
@@ -338,10 +339,60 @@
     var errEl = body.querySelector('#orderError');
     errEl.textContent = err;
     if (err) return;
+    if (ORDER_ENDPOINT && window.fetch) return sendDirect();
+    openMailApp();
+  }
+
+  function openMailApp() {
     var subject = 'Order request — ' + form.name.trim();
     var href = 'mailto:' + ORDER_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(orderText());
     window.location.href = href;
     showDone();
+  }
+
+  var sending = false;
+  function sendDirect() {
+    if (sending) return;
+    sending = true;
+    var btn = body.querySelector('[data-testid=order-send]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    var hp = body.querySelector('#ofWebsite');
+    var payload = {
+      name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(),
+      method: form.method, address: form.address.trim(), notes: form.notes.trim(), ack: form.ack,
+      website: hp ? hp.value : '',
+      items: totals().list.map(function (it) { return { name: it.name, size: it.strength, qty: it.qty, price: it.price }; })
+    };
+    fetch(ORDER_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok && j && j.ok, j: j || {} }; }); })
+      .then(function (res) {
+        sending = false;
+        if (res.ok) return showSent(res.j.ref, res.j.customerCopy);
+        sendFailed();
+      })
+      .catch(function () { sending = false; sendFailed(); });
+  }
+
+  function sendFailed() {
+    var btn = body.querySelector('[data-testid=order-send]');
+    if (btn) { btn.disabled = false; btn.textContent = 'Send order'; }
+    var er = body.querySelector('#orderError');
+    if (er) er.innerHTML = 'Couldn’t send just now. <button type="button" class="order-link" id="ofMailApp">Send with my email app instead</button>';
+    var m = body.querySelector('#ofMailApp'); if (m) m.addEventListener('click', openMailApp);
+  }
+
+  function showSent(ref, customerCopy) {
+    var summary = totals();
+    body.innerHTML =
+      '<div class="order-done">' +
+        '<h3>Order received — thank you</h3>' +
+        (ref ? '<p>Your order number is <strong>' + esc(ref) + '</strong>.</p>' : '') +
+        '<p>We’ll reply to confirm your order and send Interac e-Transfer details.</p>' +
+        (customerCopy ? '<p>A copy is on its way to <strong>' + esc(form.email.trim()) + '</strong>.</p>' : '') +
+        '<div class="order-alt"><button type="button" class="order-link" id="doneClear">Done</button></div>' +
+      '</div>';
+    cart = {}; save(); paintAll(true);
+    body.querySelector('#doneClear').addEventListener('click', function () { closeSheet(); });
   }
 
   function showDone() {

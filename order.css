@@ -190,3 +190,5 @@ body.has-order .warnings { padding-bottom: 150px; }
 .ct-note { margin: 0; font-size: .82rem; color: var(--text-2); }
 .ct-go { padding: 10px 18px; }
 .ct-go[disabled] { opacity: .7; cursor: progress; }
+
+.order-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
