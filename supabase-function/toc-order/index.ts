@@ -7,7 +7,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const ORDER_TO = "orders@tidesofchange.ca";
 const SENDER = "Tides of Change Orders <orders@tidesofchange.ca>";
 const METHODS = ["In-person delivery (Edmonton area)", "Express mail (Canada Post rate)"];
-const LOGO = "https://dc8tvfp8pn-sys.github.io/changing-tides-price-list/assets/icon-512-v9.png";
+const LOGO = "https://tidesofchange.ca/assets/icon-512-v9.png";
+// Email art. Mail apps (iPhone Mail, Outlook) repaint text/background COLOURS
+// in light mode, turning the navy design grey. They do not repaint IMAGES, so
+// the header is one picture and every navy surface is also painted with a
+// tiny navy image behind the normal colour.
+const EMAIL_ART = (Deno.env.get("TOC_EMAIL_ART") || "https://tidesofchange.ca/assets/email/").trim();
+const BG_DEEP = `${EMAIL_ART}navy-deep.png`, BG_CARD = `${EMAIL_ART}navy.png`, BG_PANEL = `${EMAIL_ART}panel.png`;
+const HEADER_IMG = `${EMAIL_ART}header-v1.png`;
 const CONFIRM_URL = (Deno.env.get("TOC_CONFIRM_URL") || "https://tidesofchange.ca/confirm.html").trim();
 // Edmonton delivery pricing. FREE_OVER = items subtotal at/above which delivery + fuel are free (null = never).
 const DELIVERY_FEE = 20, FUEL_FEE = 0; // $20 in-person delivery includes the Rising Tide fuel surcharge
@@ -89,7 +96,7 @@ const lineRow = (label: string, value: string, strong = false) =>
   `<tr><td style="padding:4px 0;${F}font-size:${strong ? 16 : 14}px;color:${strong ? "#f2f6fb" : "#c4d2e4"};font-weight:${strong ? 700 : 400}">${label}</td><td align="right" style="padding:4px 0;${F}font-size:${strong ? 16 : 14}px;font-weight:700;color:${strong ? "#01c88a" : "#f2f6fb"};text-align:right">${value}</td></tr>`;
 const section = (html: string) => `<tr><td style="padding:16px 24px 0 24px">${html}</td></tr>`;
 const panel = (inner: string, accent = "") =>
-  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0e1a30" style="background:#0e1a30;border:1px solid #1c2c48;${accent ? `border-left:4px solid ${accent};` : ""}border-radius:12px"><tr><td style="padding:14px 16px;${F}color:#f2f6fb;font-size:14px;line-height:1.55">${inner}</td></tr></table>`;
+  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0e1a30" background="${BG_PANEL}" style="background:#0e1a30 url(${BG_PANEL}) repeat;border:1px solid #1c2c48;${accent ? `border-left:4px solid ${accent};` : ""}border-radius:12px"><tr><td style="padding:14px 16px;${F}color:#f2f6fb;font-size:14px;line-height:1.55">${inner}</td></tr></table>`;
 const textBlock = (html: string) => `<tr><td style="padding:16px 24px 0 24px;${F}font-size:14px;line-height:1.7;color:#c4d2e4">${html}</td></tr>`;
 const button = (href: string, label: string) =>
   `<tr><td align="center" style="padding:20px 24px 0 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#01c88a" style="background:#01c88a;border-radius:999px"><a href="${href}" style="display:inline-block;padding:14px 26px;${F}font-size:15px;font-weight:700;color:#06121f;text-decoration:none">${label}</a></td></tr></table></td></tr>`;
@@ -99,20 +106,10 @@ function shell(title: string, intro: string, body: string) {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark only"><meta name="supported-color-schemes" content="dark">
 <style>:root{color-scheme:dark only} body{background-color:#060e1c}</style></head>
-<body bgcolor="#060e1c" style="margin:0;padding:0;background:#060e1c">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#060e1c" style="background:#060e1c"><tr><td align="center" style="padding:20px 10px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a1424" style="max-width:560px;background:#0a1424;border:1px solid #1c2c48;border-radius:16px;overflow:hidden">
-<tr><td align="center" style="padding:26px 24px 10px 24px">
-<img src="${LOGO}" width="64" height="64" alt="Tides of Change" style="display:block;border:0;border-radius:14px">
-<div style="${F}font-size:20px;font-weight:700;letter-spacing:.14em;color:#f2f6fb;margin-top:12px">TIDES OF CHANGE</div>
-<div style="${F}font-size:12px;color:#01c88a;margin-top:4px">Research Supplement Price List</div>
-</td></tr>
-<tr><td style="padding:8px 0 0 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td height="5" bgcolor="#22c7e6" style="background:#22c7e6;font-size:0;line-height:0">&nbsp;</td>
-<td height="5" bgcolor="#01c88a" style="background:#01c88a;font-size:0;line-height:0">&nbsp;</td>
-<td height="5" bgcolor="#0b9bdc" style="background:#0b9bdc;font-size:0;line-height:0">&nbsp;</td>
-<td height="5" bgcolor="#ff9500" style="background:#ff9500;font-size:0;line-height:0">&nbsp;</td>
-</tr></table></td></tr>
+<body bgcolor="#060e1c" background="${BG_DEEP}" style="margin:0;padding:0;background:#060e1c url(${BG_DEEP}) repeat">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#060e1c" background="${BG_DEEP}" style="background:#060e1c url(${BG_DEEP}) repeat"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a1424" background="${BG_CARD}" style="max-width:560px;background:#0a1424 url(${BG_CARD}) repeat;border:1px solid #1c2c48;border-radius:16px;overflow:hidden">
+<tr><td style="padding:0;font-size:0;line-height:0"><img src="${HEADER_IMG}" width="560" alt="Tides of Change · Research Supplement Price List" style="display:block;width:100%;max-width:560px;height:auto;border:0"></td></tr>
 <tr><td style="padding:22px 24px 0 24px;${F}">
 <div style="font-size:20px;font-weight:700;color:#f2f6fb;line-height:1.3">${title}</div>
 <div style="font-size:15px;color:#c4d2e4;line-height:1.55;margin-top:8px">${intro}</div>
