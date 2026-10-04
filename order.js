@@ -173,7 +173,17 @@
     return h;
   }
   var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)'];
-  var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
+  var PROVINCES = ['Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador', 'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec', 'Saskatchewan', 'Yukon'];
+  var PROV_CODE = { 'Alberta': 'AB', 'British Columbia': 'BC', 'Manitoba': 'MB', 'New Brunswick': 'NB', 'Newfoundland and Labrador': 'NL', 'Northwest Territories': 'NT', 'Nova Scotia': 'NS', 'Nunavut': 'NU', 'Ontario': 'ON', 'Prince Edward Island': 'PE', 'Quebec': 'QC', 'Saskatchewan': 'SK', 'Yukon': 'YT' };
+  var form = { name: '', phone: '', email: '', method: METHODS[0], street: '', unit: '', city: '', province: 'Alberta', postal: '', address: '', notes: '', ack: false };
+  // Canadian postal code: A1A 1A1 (space optional while typing).
+  function normPostal(v) { var c = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return c.length === 6 ? c.slice(0, 3) + ' ' + c.slice(3) : String(v || '').toUpperCase().trim(); }
+  function postalOk(v) { return /^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTV-Z] ?[0-9][ABCEGHJ-NPRSTV-Z][0-9]$/.test(normPostal(v)); }
+  // One line for the order email: "Unit 4, 123 Main St, Red Deer, AB T4N 1A1"
+  function fullAddress() {
+    var st = [form.unit.trim() ? 'Unit ' + form.unit.trim().replace(/^(unit|apt|suite|#)\s*/i, '') : '', form.street.trim()].filter(Boolean).join(', ');
+    return [st, form.city.trim(), (PROV_CODE[form.province] || form.province) + ' ' + normPostal(form.postal)].filter(function (x) { return x && x.trim(); }).join(', ');
+  }
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
@@ -203,7 +213,16 @@
           field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method">' +
             METHODS.map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
           '<p class="order-total-note" id="ofMethodNote">' + methodNote() + '</p>' +
-          field('ofAddress', 'Delivery address', '<textarea id="ofAddress" name="address" autocomplete="street-address" placeholder="Street, city, province, postal code">' + esc(form.address) + '</textarea>') +
+          '<fieldset class="order-addr"><legend>Delivery address</legend>' +
+            field('ofStreet', 'Street address', '<input id="ofStreet" name="street" autocomplete="address-line1" placeholder="123 Main Street" value="' + esc(form.street) + '">') +
+            field('ofUnit', 'Unit / apt (optional)', '<input id="ofUnit" name="unit" autocomplete="address-line2" placeholder="Unit 4" value="' + esc(form.unit) + '">') +
+            field('ofCity', 'City', '<input id="ofCity" name="city" autocomplete="address-level2" placeholder="Red Deer" value="' + esc(form.city) + '">') +
+            '<div class="order-addr-row">' +
+              field('ofProv', 'Province', '<select id="ofProv" name="province" autocomplete="address-level1">' +
+                PROVINCES.map(function (o) { return '<option' + (form.province === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
+              field('ofPostal', 'Postal code', '<input id="ofPostal" name="postal" autocomplete="postal-code" autocapitalize="characters" maxlength="7" placeholder="T4N 1A1" value="' + esc(form.postal) + '">') +
+            '</div>' +
+          '</fieldset>' +
           field('ofNotes', 'Notes (optional)', '<textarea id="ofNotes" name="notes" placeholder="Anything we should know">' + esc(form.notes) + '</textarea>') +
           '<label class="order-check"><input type="checkbox" id="ofAck"' + (form.ack ? ' checked' : '') + '> I understand these products are for research purposes only.</label>' +
           '<div class="order-hp" aria-hidden="true"><label>Leave blank<input id="ofWebsite" name="website" tabindex="-1" autocomplete="off"></label></div>' +
@@ -307,7 +326,7 @@
   function capture() {
     var g = function (id) { var el = body.querySelector('#' + id); return el ? el.value : ''; };
     form.name = g('ofName'); form.phone = g('ofPhone'); form.email = g('ofEmail');
-    form.method = g('ofMethod') || form.method; form.address = g('ofAddress'); form.notes = g('ofNotes');
+    form.method = g('ofMethod') || form.method; form.street = g('ofStreet'); form.unit = g('ofUnit'); form.city = g('ofCity'); form.province = g('ofProv') || form.province; form.postal = g('ofPostal'); form.address = fullAddress(); form.notes = g('ofNotes');
     var mn = body.querySelector('#ofMethodNote'); if (mn) mn.textContent = methodNote();
     var ot = body.querySelector('#orderTotals'); if (ot) ot.innerHTML = totalsHtml();
     var a = body.querySelector('#ofAck'); form.ack = !!(a && a.checked);
@@ -357,7 +376,10 @@
     if (!form.name.trim()) return 'Please enter your name.';
     if (!form.phone.trim() && !form.email.trim()) return 'Please enter a phone number or email so we can confirm.';
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'That email address doesn’t look right.';
-    if (!form.address.trim()) return 'Please enter your delivery address.';
+    if (!form.street.trim()) return 'Please enter your street address.';
+    if (!form.city.trim()) return 'Please enter your city.';
+    if (!form.postal.trim()) return 'Please enter your postal code.';
+    if (!postalOk(form.postal)) return 'That postal code doesn’t look right. It should look like T4N 1A1.';
     if (!form.ack) return 'Please tick the research-purposes box.';
     return '';
   }
