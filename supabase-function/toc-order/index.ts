@@ -3,6 +3,7 @@
 // size limits, honeypot, per-IP rate limit, and HMAC-signed confirm links.
 // Secret required: TOC_SMTP2GO_API_KEY. Optional: TOC_ETRANSFER_EMAIL, TOC_CONFIRM_URL.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const ORDER_TO = "orders@tidesofchange.ca";
 const SENDER = "Tides of Change Orders <orders@tidesofchange.ca>";
@@ -25,6 +26,46 @@ function localFees(subtotal: number) {
   const free = FREE_OVER != null && subtotal >= FREE_OVER;
   return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free };
 }
+// Welcome bonus (owner rules, 5 Oct 2026): 10% off the ITEMS (not delivery or
+// postage) of a person's FIRST order placed from the Changing Tides app while
+// signed in. No minimum, no end date. One use per account/email, tracked
+// server-side in public.welcome_bonus_uses. Free-delivery threshold is checked
+// against the items subtotal BEFORE the bonus.
+const BONUS_PCT = 10;
+const BONUS_LABEL = `Welcome bonus (${BONUS_PCT}% off items)`;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const SB_URL = Deno.env.get("SUPABASE_URL") || "";
+const SB_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const admin = SB_URL && SB_SERVICE ? createClient(SB_URL, SB_SERVICE, { auth: { persistSession: false } }) : null;
+type BonusUser = { id: string; email: string };
+async function bonusUser(req: Request): Promise<BonusUser | null> {
+  if (!admin) return null;
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!tok || tok.split(".").length !== 3) return null; // anon/publishable keys are not user sessions
+  try {
+    const { data } = await admin.auth.getUser(tok);
+    const u = data?.user;
+    if (!u?.id || !u.email || !u.email_confirmed_at) return null;
+    return { id: u.id, email: u.email.toLowerCase() };
+  } catch { return null; }
+}
+async function bonusEligible(u: BonusUser | null): Promise<boolean> {
+  if (!u || !admin) return false;
+  const [a, b] = await Promise.all([
+    admin.from("welcome_bonus_uses").select("user_id").eq("user_id", u.id).limit(1),
+    admin.from("welcome_bonus_uses").select("user_id").eq("email", u.email).limit(1),
+  ]);
+  return !a.error && !b.error && !a.data?.length && !b.data?.length;
+}
+async function claimBonus(u: BonusUser, ref: string, amount: number): Promise<boolean> {
+  if (!admin) return false;
+  const { error } = await admin.from("welcome_bonus_uses").insert({ user_id: u.id, email: u.email, order_ref: ref, discount: amount });
+  return !error; // unique user_id/email: a second claim fails
+}
+async function releaseBonus(u: BonusUser, ref: string) {
+  if (admin) await admin.from("welcome_bonus_uses").delete().eq("user_id", u.id).eq("order_ref", ref);
+}
+
 const PAY_EMAIL_DEFAULT = (Deno.env.get("TOC_ETRANSFER_EMAIL") || "payments@tidesofchange.ca").trim(); // owner-set e-Transfer address
 
 const CORS = {
@@ -129,7 +170,7 @@ function orderPanel(ref: string, items: Item[], totalsHtml: string) {
 }
 
 // ---------- handlers ----------
-async function handleOrder(apiKey: string, b: Record<string, unknown>) {
+async function handleOrder(apiKey: string, b: Record<string, unknown>, user: BonusUser | null) {
   if (str(b.website, 200)) return json(200, { ok: true }); // honeypot
 
   const name = str(b.name, 100);
@@ -161,16 +202,25 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
   const ref = "TOC-" + new Date().toISOString().slice(2, 10).replace(/-/g, "") + "-" +
     Math.random().toString(36).slice(2, 6).toUpperCase();
 
-  const token = await makeToken(apiKey, { v: 1, ref, name, phone, email, method, address, notes, items, ts: Date.now() });
+  // Welcome bonus: claim first (unique per account) so two quick orders can't both get it.
+  let discount = 0;
+  if (user && (await bonusEligible(user))) {
+    const amt = round2(subtotal * BONUS_PCT / 100);
+    if (amt > 0 && (await claimBonus(user, ref, amt))) discount = amt;
+  }
+  const bonusRow = discount ? lineRow(BONUS_LABEL, `&minus;${money(discount)}`) : "";
+  const bonusText = discount ? [`${BONUS_LABEL}: -${money(discount)}`] : [];
+
+  const token = await makeToken(apiKey, { v: 1, ref, name, phone, email, method, address, notes, items, discount, ts: Date.now() });
   const confirmLink = `${CONFIRM_URL}#t=${token}`;
 
   const lines = items.map((i) => `• ${i.qty} × ${i.name}${i.size ? " " + i.size : ""} @ ${money(i.price)} = ${money(i.qty * i.price)}`);
   const lf = localFees(subtotal);
-  const est = subtotal + (express ? 0 : lf.delivery + lf.fuel);
+  const est = subtotal - discount + (express ? 0 : lf.delivery + lf.fuel);
   const feeText = express ? ["Express mail: Canada Post rate (confirmed before payment)"]
     : [`In-person delivery: ${lf.free ? "Free" : money(lf.delivery)}`];
-  const estLine = [`Items: ${money(subtotal)}`, ...feeText, `Estimated total: ${money(est)} CAD${express ? " + Canada Post express postage" : ""} (final total confirmed before payment)`].join("\n");
-  const estRows = lineRow("Items", money(subtotal)) +
+  const estLine = [`Items: ${money(subtotal)}`, ...bonusText, ...feeText, `Estimated total: ${money(est)} CAD${express ? " + Canada Post express postage" : ""} (final total confirmed before payment)`].join("\n");
+  const estRows = lineRow("Items", money(subtotal)) + bonusRow +
     (express ? lineRow("Express mail", "Canada Post rate")
       : lineRow("In-person delivery", lf.free ? "Free" : money(lf.delivery))) +
     lineRow("Estimated total", `${money(est)} CAD${express ? " +" : ""}`, true);
@@ -204,7 +254,10 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
     html_body: ownerHtml,
     ...(email ? { custom_headers: [{ header: "Reply-To", value: email }] } : {}),
   });
-  if (!sentOwner) return json(502, { ok: false, error: "send_failed" });
+  if (!sentOwner) {
+    if (discount && user) await releaseBonus(user, ref); // order didn't go through: keep the bonus for next time
+    return json(502, { ok: false, error: "send_failed" });
+  }
 
   let customerCopy = false;
   if (email) {
@@ -222,7 +275,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>) {
       custom_headers: [{ header: "Reply-To", value: ORDER_TO }],
     });
   }
-  return json(200, { ok: true, ref, customerCopy });
+  return json(200, { ok: true, ref, customerCopy, discount });
 }
 
 async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: boolean) {
@@ -235,7 +288,8 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
   const lf = localFees(subtotal);
   const fee = express ? Math.max(0, Math.min(10000, Math.round((Number(b.fee) || 0) * 100) / 100)) : 0;
-  const total = subtotal + (express ? fee : lf.delivery + lf.fuel);
+  const discount = Math.max(0, Math.min(subtotal, round2(Number(o.discount) || 0)));
+  const total = subtotal - discount + (express ? fee : lf.delivery + lf.fuel);
   const payEmail = str(b.payEmail, 200) || PAY_EMAIL_DEFAULT;
   const autodeposit = b.autodeposit === true;
   const question = str(b.question, 200);
@@ -243,7 +297,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const eta = str(b.eta, 200);
   const note = str(b.note, 600);
 
-  const view = { local: express ? null : { delivery: lf.delivery, fuel: lf.fuel, free: lf.free, fuelName: FUEL_NAME }, ref: o.ref, name: o.name, email: o.email, phone: o.phone, method: o.method, address: o.address, notes: o.notes, items, subtotal, express, payEmailDefault: PAY_EMAIL_DEFAULT };
+  const view = { local: express ? null : { delivery: lf.delivery, fuel: lf.fuel, free: lf.free, fuelName: FUEL_NAME }, ref: o.ref, name: o.name, email: o.email, phone: o.phone, method: o.method, address: o.address, notes: o.notes, items, subtotal, discount, discountLabel: discount ? BONUS_LABEL : "", express, payEmailDefault: PAY_EMAIL_DEFAULT };
   if (str(b.action, 20) === "view") return json(200, { ok: true, order: view });
 
   if (!o.email) return json(400, { ok: false, error: "no_customer_email" });
@@ -254,6 +308,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const feeLines: [string, string][] = express ? [["Express mail (Canada Post)", money(fee)]]
     : [["In-person delivery", lf.free ? "Free" : money(lf.delivery)]];
   const totals = lineRow("Items", `${money(subtotal)}`) +
+    (discount ? lineRow(BONUS_LABEL, `&minus;${money(discount)}`) : "") +
     feeLines.map(([k, v]) => lineRow(k, v)).join("") +
     lineRow("Total due", `${money(total)} CAD`, true);
 
@@ -281,7 +336,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const text = [
     `Hi ${o.name},`, "", "Thank you for your order. Everything is confirmed and ready.", "",
     `Order: ${o.ref}`, ...items.map((i) => `• ${i.qty} × ${i.name}${i.size ? " " + i.size : ""} = ${money(i.qty * i.price)}`),
-    `Items: ${money(subtotal)}`, ...feeLines.map(([k, v]) => `${k}: ${v}`), `Total due: ${money(total)} CAD`, "",
+    `Items: ${money(subtotal)}`, ...(discount ? [`${BONUS_LABEL}: -${money(discount)}`] : []), ...feeLines.map(([k, v]) => `${k}: ${v}`), `Total due: ${money(total)} CAD`, "",
     "How to pay (Interac e-Transfer)",
     `1. Send ${money(total)} CAD to: ${payEmail}`,
     `2. In the message box, enter your order number: ${o.ref}`,
@@ -324,6 +379,16 @@ Deno.serve(async (req) => {
     if (limited("c:" + ip, 40)) return json(429, { ok: false, error: "rate_limited" });
     return handleConfirm(apiKey, b, action !== "confirm");
   }
+  if (action === "bonus") {
+    if (limited("b:" + ip, 60)) return json(429, { ok: false, error: "rate_limited" });
+    const u = await bonusUser(req);
+    let usedRef = "";
+    if (u && admin) {
+      const { data } = await admin.from("welcome_bonus_uses").select("order_ref").eq("user_id", u.id).limit(1);
+      usedRef = data?.[0]?.order_ref || "";
+    }
+    return json(200, { ok: true, signedIn: !!u, eligible: await bonusEligible(u), usedRef, pct: BONUS_PCT });
+  }
   if (limited(ip, 5)) return json(429, { ok: false, error: "rate_limited" });
-  return handleOrder(apiKey, b);
+  return handleOrder(apiKey, b, await bonusUser(req));
 });

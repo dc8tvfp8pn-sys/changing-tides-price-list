@@ -84,6 +84,7 @@
         <div class="ref" id="ref"></div>
         <div id="items"></div>
         <div class="row"><span>Items</span><span id="sub"></span></div>
+        <div class="row" id="discRow" hidden style="color:#ff9500;font-weight:700"><span id="discName">Welcome coupon</span><span id="discShow"></span></div>
         <div class="row"><span id="feeName">Delivery</span><span id="feeShow"></span></div>
         <div class="row" id="fuelRow" hidden><span id="fuelName"></span><span id="fuelShow"></span></div>
         <div class="row total"><span>Total due</span><span id="total"></span></div>
@@ -177,16 +178,19 @@
 
     function fee() { if (!order || !order.express) return 0; var v = parseFloat($('fee').value); return isFinite(v) && v > 0 ? v : 0; }
     function extra() { var l = order && order.local; return l ? l.delivery + l.fuel : fee(); }
+    function disc() { return order && order.discount > 0 ? order.discount : 0; }
     function recalc() {
       if (!order) return;
       $('sub').textContent = money(order.subtotal);
+      $('discRow').hidden = !disc();
+      if (disc()) { $('discName').textContent = order.discountLabel || 'Welcome coupon'; $('discShow').textContent = '\u2212' + money(disc()); }
       var l = order.local;
       if (l) {
         $('feeName').textContent = 'In-person delivery';
         $('feeShow').textContent = l.free ? 'Free' : money(l.delivery);
         $('fuelRow').hidden = true;
       } else { $('fuelRow').hidden = true; $('feeShow').textContent = fee() ? money(fee()) : 'enter fee'; }
-      $('total').textContent = money(order.subtotal + extra()) + ' CAD';
+      $('total').textContent = money(order.subtotal - disc() + extra()) + ' CAD';
     }
     function setAD(on) { autodeposit = on; $('adYes').setAttribute('aria-pressed', on); $('adNo').setAttribute('aria-pressed', !on); $('qa').hidden = on; }
     $('fee').addEventListener('input', function () { recalc(); $('err').textContent = ''; });
@@ -216,7 +220,7 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(p.payEmail)) { $('err').textContent = MSG.pay_email; return; }
       if (order.express && !(p.fee > 0)) { $('err').textContent = MSG.fee_required; return; }
       if (!autodeposit && (!p.question || !p.answer)) { $('err').textContent = MSG.security_qa; return; }
-      if (!window.confirm('Send the payment request for ' + money(order.subtotal + extra()) + ' CAD to ' + order.email + '?')) return;
+      if (!window.confirm('Send the payment request for ' + money(order.subtotal - disc() + extra()) + ' CAD to ' + order.email + '?')) return;
       busy(b, true, 'Sending…');
       call(p).then(function (res) {
         if (!res.ok) { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG[res.error] || 'Sending failed.'; return; }
