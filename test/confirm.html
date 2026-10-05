@@ -23,6 +23,9 @@
     .brand img { width:44px; height:44px; border-radius:10px; }
     .brand b { letter-spacing:.14em; font-size:1.05rem; }
     .brand small { display:block; color:var(--teal); font-size:.75rem; letter-spacing:.02em; }
+    .waveband { position:relative; height:44px; margin:2px -16px 18px; overflow:hidden; }
+    .waveband svg { position:absolute; left:0; bottom:0; width:100%; height:100%; }
+    .waveband .w1 path{fill:rgba(34,199,230,.30)} .waveband .w2 path{fill:rgba(1,200,138,.38)} .waveband .w3 path{fill:rgba(11,155,220,.55)} .waveband .w4 path{fill:var(--orange)}
     .stripe { display:flex; height:4px; border-radius:2px; overflow:hidden; margin:12px 0 18px; }
     .stripe i { flex:1; } .stripe i:nth-child(1){background:var(--cyan)} .stripe i:nth-child(2){background:var(--teal)} .stripe i:nth-child(3){background:var(--blue)} .stripe i:nth-child(4){background:var(--orange)}
     h1 { font-size:1.35rem; margin:0 0 4px; }
@@ -63,7 +66,12 @@
 <body>
   <main class="wrap">
     <div class="brand"><img src="assets/icon-512-v9.png" alt="Tides of Change logo" /><div><b>TIDES OF CHANGE</b><small>Order desk</small></div></div>
-    <div class="stripe" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="waveband" aria-hidden="true">
+      <svg class="w1" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,60 C240,10 480,110 720,60 C960,10 1200,110 1440,60 L1440,120 L0,120 Z"/></svg>
+      <svg class="w2" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,72 C240,28 480,116 720,72 C960,28 1200,116 1440,72 L1440,120 L0,120 Z"/></svg>
+      <svg class="w3" viewBox="0 0 1440 120" preserveAspectRatio="none"><path d="M0,84 C240,44 480,120 720,84 C960,44 1200,120 1440,84 L1440,120 L0,120 Z"/></svg>
+      <svg class="w4" viewBox="0 0 1440 124" preserveAspectRatio="none"><path d="M0,98 C240,66 480,124 720,98 C960,66 1200,124 1440,98 L1440,124 L0,124 Z"/></svg>
+    </div>
 
     <p id="loading" class="muted">Loading order…</p>
     <div id="problem" class="card" hidden><h1>Can’t open this order</h1><p class="muted" id="problemText"></p></div>
@@ -76,6 +84,7 @@
         <div class="ref" id="ref"></div>
         <div id="items"></div>
         <div class="row"><span>Items</span><span id="sub"></span></div>
+        <div class="row" id="discRow" hidden style="color:#ff9500;font-weight:700"><span id="discName">Welcome coupon</span><span id="discShow"></span></div>
         <div class="row"><span id="feeName">Delivery</span><span id="feeShow"></span></div>
         <div class="row" id="fuelRow" hidden><span id="fuelName"></span><span id="fuelShow"></span></div>
         <div class="row total"><span>Total due</span><span id="total"></span></div>
@@ -169,16 +178,19 @@
 
     function fee() { if (!order || !order.express) return 0; var v = parseFloat($('fee').value); return isFinite(v) && v > 0 ? v : 0; }
     function extra() { var l = order && order.local; return l ? l.delivery + l.fuel : fee(); }
+    function disc() { return order && order.discount > 0 ? order.discount : 0; }
     function recalc() {
       if (!order) return;
       $('sub').textContent = money(order.subtotal);
+      $('discRow').hidden = !disc();
+      if (disc()) { $('discName').textContent = order.discountLabel || 'Welcome coupon'; $('discShow').textContent = '\u2212' + money(disc()); }
       var l = order.local;
       if (l) {
         $('feeName').textContent = 'In-person delivery';
         $('feeShow').textContent = l.free ? 'Free' : money(l.delivery);
         $('fuelRow').hidden = true;
       } else { $('fuelRow').hidden = true; $('feeShow').textContent = fee() ? money(fee()) : 'enter fee'; }
-      $('total').textContent = money(order.subtotal + extra()) + ' CAD';
+      $('total').textContent = money(order.subtotal - disc() + extra()) + ' CAD';
     }
     function setAD(on) { autodeposit = on; $('adYes').setAttribute('aria-pressed', on); $('adNo').setAttribute('aria-pressed', !on); $('qa').hidden = on; }
     $('fee').addEventListener('input', function () { recalc(); $('err').textContent = ''; });
@@ -208,7 +220,7 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(p.payEmail)) { $('err').textContent = MSG.pay_email; return; }
       if (order.express && !(p.fee > 0)) { $('err').textContent = MSG.fee_required; return; }
       if (!autodeposit && (!p.question || !p.answer)) { $('err').textContent = MSG.security_qa; return; }
-      if (!window.confirm('Send the payment request for ' + money(order.subtotal + extra()) + ' CAD to ' + order.email + '?')) return;
+      if (!window.confirm('Send the payment request for ' + money(order.subtotal - disc() + extra()) + ' CAD to ' + order.email + '?')) return;
       busy(b, true, 'Sending…');
       call(p).then(function (res) {
         if (!res.ok) { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG[res.error] || 'Sending failed.'; return; }
