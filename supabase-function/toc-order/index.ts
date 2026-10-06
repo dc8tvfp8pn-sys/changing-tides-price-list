@@ -66,6 +66,32 @@ async function releaseBonus(u: BonusUser, ref: string) {
   if (admin) await admin.from("welcome_bonus_uses").delete().eq("user_id", u.id).eq("order_ref", ref);
 }
 
+// Server-side price check: prices come from the live tidesofchange.ca price
+// list (the single price source), never from the order request. Cached 5 min.
+const PRICE_SOURCE = "https://tidesofchange.ca/";
+let priceCache: { at: number; map: Map<string, number> } | null = null;
+const unent = (t: string) => t.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+const priceKey = (name: string, size: string) => `${name}|${size}`.toLowerCase().replace(/\s+/g, " ").trim();
+async function livePrices(): Promise<Map<string, number> | null> {
+  if (priceCache && Date.now() - priceCache.at < 5 * 60_000) return priceCache.map;
+  try {
+    const r = await fetch(`${PRICE_SOURCE}?t=${Date.now()}`, { headers: { "cache-control": "no-cache" } });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const map = new Map<string, number>();
+    for (const m of html.matchAll(/<li class="price-row">([\s\S]*?)<\/li>/g)) {
+      const row = m[1];
+      const name = unent(row.match(/class="name">([\s\S]*?)<\/span>/)?.[1] || "");
+      const size = unent(row.match(/class="strength">([\s\S]*?)<\/span>/)?.[1] || "");
+      const price = parseFloat(unent(row.match(/class="price">([\s\S]*?)<\/span>/)?.[1] || "").replace(/[^0-9.]/g, ""));
+      if (name && isFinite(price)) map.set(priceKey(name, size), price);
+    }
+    if (!map.size) return null;
+    priceCache = { at: Date.now(), map };
+    return map;
+  } catch { return null; }
+}
+
 const PAY_EMAIL_DEFAULT = (Deno.env.get("TOC_ETRANSFER_EMAIL") || "payments@tidesofchange.ca").trim(); // owner-set e-Transfer address
 
 const CORS = {
@@ -197,6 +223,19 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
   if (!ack) return json(400, { ok: false, error: "ack" });
   if (!items.length) return json(400, { ok: false, error: "items" });
 
+  // Use the website's prices, not the ones sent with the order.
+  const prices = await livePrices();
+  let priceNote = "";
+  if (prices) {
+    for (const i of items) {
+      const p = prices.get(priceKey(i.name, i.size));
+      if (p === undefined) return json(409, { ok: false, error: "item_unavailable", item: `${i.name} ${i.size}`.trim() });
+      i.price = p;
+    }
+  } else {
+    priceNote = "PRICE CHECK UNAVAILABLE: the price list couldn't be read when this order came in. Check each price against tidesofchange.ca before sending the payment request.";
+  }
+
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
   const express = method === METHODS[1];
   const ref = "TOC-" + new Date().toISOString().slice(2, 10).replace(/-/g, "") + "-" +
@@ -227,7 +266,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
   const fuelBlurb = !express && !lf.free ? textBlock(`<span style="font-size:12px;color:#5d6b80">${FUEL_NOTE}</span>`) : "";
 
   const ownerText = [
-    `NEW ORDER ${ref} — Tides of Change`, "",
+    `NEW ORDER ${ref} — Tides of Change`, "", ...(priceNote ? [priceNote, ""] : []),
     `Name: ${name}`, `Phone: ${phone || "—"}`, `Email: ${email || "—"}`,
     `Delivery method: ${method}`, `Delivery address: ${address.replace(/\s*\n\s*/g, ", ")}`,
     "", "Items:", ...lines, "", estLine, "",
@@ -243,6 +282,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
   const ownerHtml = shell(`New order from ${esc(name)}`,
     email ? "Check stock, then tap the button to confirm and send the customer their payment details."
           : "No email given — contact the customer by phone to confirm and take payment.",
+    (priceNote ? textBlock(`<strong style="color:#b45309">${esc(priceNote)}</strong>`) : "") +
     orderPanel(ref, items, estRows) + details +
     (email ? button(confirmLink, "Confirm order &amp; send payment request") +
       textBlock(`<span style="font-size:12px;color:#5d6b80">Or reply to this email to write to the customer yourself.</span>`) : ""));
