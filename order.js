@@ -148,10 +148,15 @@
   var lastFocus = null;
   var ct = { open: false, busy: false, msg: '', ok: false };
   // Edmonton delivery pricing (owner-set). FREE_OVER: items subtotal at/above which delivery + fuel are free; null = never.
-  var DELIVERY_FEE = 20, FUEL_FEE = 0, FREE_OVER = 200; // free when items subtotal is $200 or more
+  var DELIVERY_FEE = 20, FUEL_FEE = 0, FREE_OVER = null; // owner 10 Oct 2026: no free delivery
+  // In-person area (owner 10 Oct 2026): Edmonton to Fort Saskatchewan = Edmonton T5/T6, Sherwood Park/Strathcona T8A-T8H, Fort Saskatchewan T8L.
+  var AREA_RE = /^(T5[A-Z]|T6[A-Z]|T8[ABCEGHL])$/;
+  var AREA_TEXT = 'Edmonton, Sherwood Park and Fort Saskatchewan';
+  function inArea(postal) { return AREA_RE.test(String(postal || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3)); }
   var FUEL_NAME = 'Rising Tide fuel surcharge';
   var FUEL_NOTE = 'Includes our Rising Tide fuel surcharge. Fuel prices are running high, and this keeps in-person delivery running until the tide goes out.';
   function fees(sum, method) {
+    if (!method) return { delivery: 0, fuel: 0, free: false, express: false, none: true };
     if (method !== METHODS[0]) return { delivery: 0, fuel: 0, free: false, express: true };
     var free = FREE_OVER != null && sum >= FREE_OVER;
     return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free: free, express: false };
@@ -159,7 +164,9 @@
   function totalsHtml() {
     var t = totals(), f = fees(t.sum, form.method), h = '';
     h += '<div class="order-fee-row"><span>Items</span><span>' + money(t.sum) + '</span></div>';
-    if (f.express) {
+    if (f.none) {
+      h += '<div class="order-fee-row"><span>Delivery</span><span>Choose below</span></div>';
+    } else if (f.express) {
       h += '<div class="order-fee-row"><span>Express mail</span><span>Canada Post rate</span></div>';
     } else if (f.free) {
       h += '<div class="order-fee-row"><span>In-person delivery</span><span class="free">Free</span></div>';
@@ -168,18 +175,18 @@
     }
     h += '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum + f.delivery + f.fuel) + (f.express ? '+' : '') + '</span></div>';
     h += '<p class="order-total-note">' + (f.express ? 'CAD, plus Canada Post express postage. ' : 'CAD. ') + 'Final total confirmed by our team before payment.</p>';
-    if (!f.express && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
+    if (!f.none && !f.express && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
     if (!f.express && FREE_OVER != null && !f.free) h += '<p class="order-total-note">Free in-person delivery on orders of ' + money(FREE_OVER) + ' or more.</p>';
     return h;
   }
   var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)'];
   var PROVINCES = ['Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador', 'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec', 'Saskatchewan', 'Yukon'];
   var PROV_CODE = { 'Alberta': 'AB', 'British Columbia': 'BC', 'Manitoba': 'MB', 'New Brunswick': 'NB', 'Newfoundland and Labrador': 'NL', 'Northwest Territories': 'NT', 'Nova Scotia': 'NS', 'Nunavut': 'NU', 'Ontario': 'ON', 'Prince Edward Island': 'PE', 'Quebec': 'QC', 'Saskatchewan': 'SK', 'Yukon': 'YT' };
-  var form = { name: '', phone: '', email: '', method: METHODS[0], street: '', unit: '', city: '', province: 'Alberta', postal: '', address: '', notes: '', ack: false };
+  var form = { name: '', phone: '', email: '', method: '', street: '', unit: '', city: '', province: 'Alberta', postal: '', address: '', notes: '', ack: false };
   // Canadian postal code: A1A 1A1 (space optional while typing).
   function normPostal(v) { var c = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return c.length === 6 ? c.slice(0, 3) + ' ' + c.slice(3) : String(v || '').toUpperCase().trim(); }
   function postalOk(v) { return /^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTV-Z] ?[0-9][ABCEGHJ-NPRSTV-Z][0-9]$/.test(normPostal(v)); }
-  // One line for the order email: "Unit 4, 123 Main St, Red Deer, AB T4N 1A1"
+  // One line for the order email: "Unit 4, 123 Main St, Red Deer, AB T5K 1A1"
   function fullAddress() {
     var st = [form.unit.trim() ? 'Unit ' + form.unit.trim().replace(/^(unit|apt|suite|#)\s*/i, '') : '', form.street.trim()].filter(Boolean).join(', ');
     return [st, form.city.trim(), (PROV_CODE[form.province] || form.province) + ' ' + normPostal(form.postal)].filter(function (x) { return x && x.trim(); }).join(', ');
@@ -210,17 +217,17 @@
           field('ofName', 'Name', '<input id="ofName" name="name" autocomplete="name" required value="' + esc(form.name) + '">') +
           field('ofPhone', 'Phone', '<input id="ofPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" value="' + esc(form.phone) + '">') +
           field('ofEmail', 'Email', '<input id="ofEmail" name="email" type="email" autocomplete="email" inputmode="email" value="' + esc(form.email) + '">') +
-          field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method">' +
+          field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method"><option value=""' + (form.method ? '' : ' selected') + ' disabled>Choose delivery method</option>' +
             METHODS.map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
           '<p class="order-total-note" id="ofMethodNote">' + methodNote() + '</p>' +
           '<fieldset class="order-addr"><legend>Delivery address</legend>' +
             field('ofStreet', 'Street address', '<input id="ofStreet" name="street" autocomplete="address-line1" placeholder="123 Main Street" value="' + esc(form.street) + '">') +
             field('ofUnit', 'Unit / apt (optional)', '<input id="ofUnit" name="unit" autocomplete="address-line2" placeholder="Unit 4" value="' + esc(form.unit) + '">') +
-            field('ofCity', 'City', '<input id="ofCity" name="city" autocomplete="address-level2" placeholder="Red Deer" value="' + esc(form.city) + '">') +
+            field('ofCity', 'City', '<input id="ofCity" name="city" autocomplete="address-level2" placeholder="Edmonton" value="' + esc(form.city) + '">') +
             '<div class="order-addr-row">' +
               field('ofProv', 'Province', '<select id="ofProv" name="province" autocomplete="address-level1">' +
                 PROVINCES.map(function (o) { return '<option' + (form.province === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
-              field('ofPostal', 'Postal code', '<input id="ofPostal" name="postal" autocomplete="postal-code" autocapitalize="characters" maxlength="7" placeholder="T4N 1A1" value="' + esc(form.postal) + '">') +
+              field('ofPostal', 'Postal code', '<input id="ofPostal" name="postal" autocomplete="postal-code" autocapitalize="characters" maxlength="7" placeholder="T5K 1A1" value="' + esc(form.postal) + '">') +
             '</div>' +
           '</fieldset>' +
           field('ofNotes', 'Notes (optional)', '<textarea id="ofNotes" name="notes" placeholder="Anything we should know">' + esc(form.notes) + '</textarea>') +
@@ -318,7 +325,9 @@
   function methodNote() {
     return form.method === METHODS[1]
       ? 'Express mail is charged at the Canada Post rate for your address. We’ll confirm the exact amount before you pay.'
-      : 'Edmonton area only: ' + money(DELIVERY_FEE) + ' in-person delivery, free on orders of ' + money(FREE_OVER) + ' or more. Outside Edmonton? Choose Express mail.';
+      : form.method === METHODS[0]
+        ? 'In-person delivery is ' + money(DELIVERY_FEE) + ', for ' + AREA_TEXT + ' only. Anywhere else? Choose Express mail.'
+        : 'In-person delivery (' + money(DELIVERY_FEE) + ') is for ' + AREA_TEXT + ' only. Everywhere else: Express mail.';
   }
   function field(id, text, control) {
     return '<div class="order-field"><label for="' + id + '">' + text + '</label>' + control + '</div>';
@@ -379,7 +388,9 @@
     if (!form.street.trim()) return 'Please enter your street address.';
     if (!form.city.trim()) return 'Please enter your city.';
     if (!form.postal.trim()) return 'Please enter your postal code.';
-    if (!postalOk(form.postal)) return 'That postal code doesn’t look right. It should look like T4N 1A1.';
+    if (!postalOk(form.postal)) return 'That postal code doesn’t look right. It should look like T5K 1A1.';
+    if (!form.method) return 'Please choose a delivery method.';
+    if (form.method === METHODS[0] && !inArea(form.postal)) return 'In-person delivery is for ' + AREA_TEXT + ' only. For your postal code, please choose Express mail.';
     if (!form.ack) return 'Please tick the research-purposes box.';
     return '';
   }
@@ -419,6 +430,7 @@
       .then(function (res) {
         sending = false;
         if (res.ok) return showSent(res.j.ref, res.j.customerCopy);
+        if (res.j && res.j.error === 'out_of_area') { var b2 = body.querySelector('[data-testid=order-send]'); if (b2) { b2.disabled = false; b2.textContent = 'Send order'; } var e2 = body.querySelector('#orderError'); if (e2) e2.textContent = 'In-person delivery is for ' + AREA_TEXT + ' only. For your postal code, please choose Express mail.'; return; }
         sendFailed();
       })
       .catch(function () { sending = false; sendFailed(); });

@@ -19,7 +19,14 @@ const HEADER_IMG = `${EMAIL_ART}header-v2.png`;
 const CONFIRM_URL = (Deno.env.get("TOC_CONFIRM_URL") || "https://tidesofchange.ca/confirm.html").trim();
 // Edmonton delivery pricing. FREE_OVER = items subtotal at/above which delivery + fuel are free (null = never).
 const DELIVERY_FEE = 20, FUEL_FEE = 0; // $20 in-person delivery includes the Rising Tide fuel surcharge
-const FREE_OVER: number | null = 200; // free when items subtotal is $200 or more
+const FREE_OVER: number | null = null; // owner 10 Oct 2026: no free delivery
+// In-person delivery area (owner 10 Oct 2026): Edmonton to Fort Saskatchewan.
+// Edmonton T5*/T6*, Sherwood Park / Strathcona County T8A-T8H, Fort Saskatchewan T8L.
+const AREA_RE = /^(T5[A-Z]|T6[A-Z]|T8[ABCEGHL])$/;
+function postalFsa(address: string): string {
+  const all = address.toUpperCase().match(/[A-Z]\d[A-Z] ?\d[A-Z]\d/g);
+  return all && all.length ? all[all.length - 1].slice(0, 3) : "";
+}
 const FUEL_NAME = "Rising Tide fuel surcharge";
 const FUEL_NOTE = "In-person delivery includes our Rising Tide fuel surcharge. Fuel prices are running high, and this keeps delivery running until the tide goes out.";
 function localFees(subtotal: number) {
@@ -220,6 +227,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
   if (email && !emailOk(email)) return json(400, { ok: false, error: "email" });
   if (!METHODS.includes(method)) return json(400, { ok: false, error: "method_choice" });
   if (!address) return json(400, { ok: false, error: "address" });
+  if (method === METHODS[0] && !AREA_RE.test(postalFsa(address))) return json(400, { ok: false, error: "out_of_area" });
   if (!ack) return json(400, { ok: false, error: "ack" });
   if (!items.length) return json(400, { ok: false, error: "items" });
 
