@@ -161,6 +161,37 @@ async function send(apiKey: string, msg: Record<string, unknown>) {
   return ok;
 }
 
+// ---------- receipt photo (optional, confirm only) ----------
+// The owner can attach a photo of the Canada Post receipt (tracking number +
+// postage) when confirming. The page shrinks it to a JPEG first; here we only
+// accept a small JPEG/PNG and check the real bytes, never trusting the label.
+// BEGIN receipt-helper (kept pure so tests can exercise it in isolation)
+const RECEIPT_MAX_BYTES = 3 * 1024 * 1024; // 3 MB decoded
+const RECEIPT_MIMES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png" };
+type Receipt = { b64: string; mime: string; ext: string; bytes: number };
+type ReceiptCheck = { ok: true; receipt: Receipt | null } | { ok: false; error: string };
+function checkReceipt(r: unknown): ReceiptCheck {
+  if (r == null) return { ok: true, receipt: null };
+  if (typeof r !== "object" || Array.isArray(r)) return { ok: false, error: "receipt_type" };
+  const type = (r as Record<string, unknown>).type, b64 = (r as Record<string, unknown>).b64;
+  if (typeof type !== "string" || !RECEIPT_MIMES[type]) return { ok: false, error: "receipt_type" };
+  if (typeof b64 !== "string" || !b64) return { ok: false, error: "receipt_b64" };
+  // Strict base64: charset only, no whitespace/data: prefix, padding only at the end, length multiple of 4.
+  if (b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) return { ok: false, error: "receipt_b64" };
+  const pad = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  const bytes = b64.length / 4 * 3 - pad;
+  if (bytes > RECEIPT_MAX_BYTES) return { ok: false, error: "receipt_too_large" };
+  if (bytes < 64) return { ok: false, error: "receipt_bad_image" };
+  let head: Uint8Array;
+  try { head = Uint8Array.from(atob(b64.slice(0, 8)), (c) => c.charCodeAt(0)); } catch { return { ok: false, error: "receipt_b64" }; }
+  const jpeg = head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  const png = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+  if (type === "image/jpeg" ? !jpeg : !png) return { ok: false, error: "receipt_bad_image" };
+  return { ok: true, receipt: { b64, mime: type, ext: RECEIPT_MIMES[type], bytes } };
+}
+// END receipt-helper
+const RECEIPT_CAPTION = "Your Canada Post receipt (tracking number and postage)";
+
 type Item = { name: string; size: string; qty: number; price: number };
 const F = "font-family:Arial,Helvetica,sans-serif;";
 const rowsHtml = (items: Item[]) => items.map((i) =>
@@ -344,6 +375,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const answer = str(b.answer, 100);
   const eta = str(b.eta, 200);
   const note = str(b.note, 600);
+  const receiptPreview = b.receiptPreview === true; // page asks the preview to show where the photo will go
 
   const view = { local: express ? null : { delivery: lf.delivery, fuel: lf.fuel, free: lf.free, fuelName: FUEL_NAME }, ref: o.ref, name: o.name, email: o.email, phone: o.phone, method: o.method, address: o.address, notes: o.notes, items, subtotal, discount, discountLabel: discount ? BONUS_LABEL : "", express, payEmailDefault: PAY_EMAIL_DEFAULT };
   if (str(b.action, 20) === "view") return json(200, { ok: true, order: view });
@@ -352,6 +384,19 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   if (!emailOk(payEmail)) return json(400, { ok: false, error: "pay_email" });
   if (express && !(fee > 0)) return json(400, { ok: false, error: "fee_required" });
   if (!autodeposit && (!question || !answer)) return json(400, { ok: false, error: "security_qa" });
+  const rc = checkReceipt(dry ? undefined : b.receipt); // the photo only travels with the real confirm
+  if (!rc.ok) return json(400, { ok: false, error: rc.error });
+  const receipt = rc.receipt;
+  const receiptCaption = express ? RECEIPT_CAPTION : "Your receipt";
+  const inlineName = `receipt-${o.ref.toLowerCase().replace(/[^a-z0-9-]/g, "")}.${receipt ? receipt.ext : "jpg"}`;
+  const attachName = `Receipt-${o.ref.replace(/[^A-Za-z0-9-]/g, "")}.${receipt ? receipt.ext : "jpg"}`;
+  const receiptHtml = receipt || (dry && receiptPreview)
+    ? section(panel(`<div style="font-weight:700;color:#0a1424;font-size:13px;margin-bottom:8px">${receiptCaption}</div>` +
+      (receipt
+        ? `<img src="cid:${inlineName}" alt="Canada Post receipt photo" width="100%" style="display:block;width:100%;max-width:520px;height:auto;border:1px solid #dbe3ee;border-radius:8px">`
+        : `<div style="border:1px dashed #9fb0c7;border-radius:8px;padding:28px 12px;text-align:center;color:#5d6b80;font-size:13px">Receipt photo attached &mdash; it appears here in the sent email.</div>`) +
+      `<div style="font-size:13px;color:#3c4b63;margin-top:8px"><strong>Tracking number too small?</strong> Tap the attached photo <strong>${esc(attachName)}</strong> to open it full screen, then pinch to zoom in.</div>`))
+    : "";
 
   const feeLines: [string, string][] = express ? [["Express mail (Canada Post)", money(fee)]]
     : [["In-person delivery", lf.free ? "Free" : money(lf.delivery)]];
@@ -370,12 +415,15 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
     `<div style="font-weight:700;color:#b85f00;font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">How to pay &middot; Interac e-Transfer</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${steps.map((s, n) =>
       `<tr><td valign="top" width="28" style="padding:4px 0;${F}font-size:14px;font-weight:700;color:#b85f00">${n + 1}.</td><td style="padding:4px 0;${F}font-size:14px;color:#3c4b63;line-height:1.5">${s}</td></tr>`).join("")}</table>`, "#ff9500"));
-  const next = express
+  const hasReceipt = !!receipt || (dry && receiptPreview);
+  const next = express && hasReceipt
+    ? "Your order is on its way by Canada Post express mail. The tracking number is on the receipt above."
+    : express
     ? "Once your payment arrives, we&rsquo;ll ship your order by express mail and send you the tracking number."
     : "Once your payment arrives, we&rsquo;ll contact you to arrange your in-person delivery.";
   const html = shell(`Your order is confirmed, ${esc(o.name)}`,
     "Thank you for your order. Everything is confirmed and ready. Here are your final total and payment details.",
-    orderPanel(o.ref, items, totals) + payPanel +
+    orderPanel(o.ref, items, totals) + receiptHtml + payPanel +
     textBlock((eta ? `<strong style="color:#0a1424">Timing:</strong> ${esc(eta)}<br>` : "") +
       `<strong style="color:#0a1424">Delivery:</strong> ${esc(o.method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(o.address)}` +
       (note ? `<br><br>${esc(note).replace(/\n/g, "<br>")}` : "") + `<br><br>${next}`) +
@@ -385,6 +433,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
     `Hi ${o.name},`, "", "Thank you for your order. Everything is confirmed and ready.", "",
     `Order: ${o.ref}`, ...items.map((i) => `• ${i.qty} × ${i.name}${i.size ? " " + i.size : ""} = ${money(i.qty * i.price)}`),
     `Items: ${money(subtotal)}`, ...(discount ? [`${BONUS_LABEL}: -${money(discount)}`] : []), ...feeLines.map(([k, v]) => `${k}: ${v}`), `Total due: ${money(total)} CAD`, "",
+    ...(receipt || (dry && receiptPreview) ? [express ? `Your Canada Post receipt photo (tracking number and postage) is attached as ${attachName}. Tap it to open full screen and zoom in.` : `Your receipt photo is attached as ${attachName}.`, ""] : []),
     "How to pay (Interac e-Transfer)",
     `1. Send ${money(total)} CAD to: ${payEmail}`,
     `2. In the message box, enter your order number: ${o.ref}`,
@@ -397,12 +446,17 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
 
   if (dry) return json(200, { ok: true, preview: { subject, html, text, to: o.email } });
 
+  // The owner's copy is the bcc on the same message, so it gets the photo too.
   const sent = await send(apiKey, {
     to: [o.email], bcc: [ORDER_TO], subject, html_body: html, text_body: text,
     custom_headers: [{ header: "Reply-To", value: ORDER_TO }],
+    ...(receipt ? {
+      inlines: [{ filename: inlineName, fileblob: receipt.b64, mimetype: receipt.mime }],
+      attachments: [{ filename: attachName, fileblob: receipt.b64, mimetype: receipt.mime }], // full-size copy: one tap opens it full screen
+    } : {}),
   });
   if (!sent) return json(502, { ok: false, error: "send_failed" });
-  return json(200, { ok: true, ref: o.ref, to: o.email, total });
+  return json(200, { ok: true, ref: o.ref, to: o.email, total, receipt: !!receipt });
 }
 
 Deno.serve(async (req) => {
@@ -412,17 +466,23 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("TOC_SMTP2GO_API_KEY");
   if (!apiKey) return json(503, { ok: false, error: "not_configured" });
 
-  let b: Record<string, unknown>;
+  // Body limit stays 30 KB for everything except a confirm, which may carry a
+  // receipt photo (<= 3 MB decoded, so ~4 MB of base64 plus the rest of the form).
+  const MAX_BODY = 30_000, MAX_CONFIRM_BODY = 4_300_000;
+  let b: Record<string, unknown>, rawLen = 0;
   try {
     const raw = await req.text();
-    if (raw.length > 30_000) return json(413, { ok: false, error: "too_large" });
+    rawLen = raw.length;
+    if (rawLen > MAX_CONFIRM_BODY) return json(413, { ok: false, error: "too_large" });
     b = JSON.parse(raw);
+    if (!b || typeof b !== "object" || Array.isArray(b)) return json(400, { ok: false, error: "bad_json" });
   } catch {
     return json(400, { ok: false, error: "bad_json" });
   }
 
   const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
   const action = str(b.action, 20);
+  if (rawLen > MAX_BODY && action !== "confirm") return json(413, { ok: false, error: "too_large" });
   if (action === "view" || action === "preview" || action === "confirm") {
     if (limited("c:" + ip, 40)) return json(429, { ok: false, error: "rate_limited" });
     return handleConfirm(apiKey, b, action !== "confirm");

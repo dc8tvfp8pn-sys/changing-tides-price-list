@@ -49,6 +49,30 @@
     .seg button { flex:1; font:inherit; font-weight:600; padding:10px; border-radius:10px; border:1px solid var(--navy-line); background:var(--navy-850); color:var(--text-2); cursor:pointer; }
     .seg button[aria-pressed="true"] { border-color:var(--teal); color:var(--navy-900); background:var(--teal); }
     .hint { font-size:.8rem; color:var(--text-2); margin:6px 0 0; }
+    /* Receipt photo (optional) */
+    #receiptWrap { margin-top:14px; padding-top:12px; border-top:1px dashed var(--navy-line); }
+    #receiptFile { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; pointer-events:none; }
+    .photo-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:48px; font:inherit; font-weight:700; font-size:1rem; color:var(--teal); background:var(--navy-850); border:1px dashed var(--teal); border-radius:12px; padding:12px 14px; cursor:pointer; }
+    .photo-btn:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+    .photo-btn svg { width:22px; height:22px; flex:none; }
+    .photo-btn[disabled] { opacity:.6; cursor:progress; }
+    .thumb { display:flex; gap:12px; align-items:flex-start; }
+    .thumb img { width:112px; height:112px; object-fit:cover; border-radius:10px; border:1px solid var(--navy-line); background:var(--navy-900); flex:none; }
+    .thumb .side { flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+    .thumb .side .ok { font-size:.9rem; color:var(--text); font-weight:600; margin:0; }
+    .thumb .seg button { min-height:44px; }
+    .thumb-btn { position:relative; padding:0; border:0; background:none; cursor:zoom-in; flex:none; border-radius:10px; }
+    .thumb-btn:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+    .zoom-tag { position:absolute; left:4px; right:4px; bottom:4px; background:rgba(5,12,24,.82); color:#fff; font-size:.72rem; font-weight:700; text-align:center; border-radius:6px; padding:3px 0; }
+    #zoomView { position:fixed; inset:0; z-index:1000; background:#000; display:flex; flex-direction:column; }
+    #zoomView[hidden] { display:none; }
+    #zoomBar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:calc(10px + env(safe-area-inset-top)) 14px 10px; background:#0a1424; color:#fff; font-size:.9rem; }
+    #zoomBar button { min-height:44px; min-width:88px; font:inherit; font-weight:700; color:#0a1424; background:#2ee6b0; border:0; border-radius:12px; padding:8px 14px; }
+    #zoomScroll { flex:1; overflow:auto; -webkit-overflow-scrolling:touch; display:flex; align-items:center; justify-content:center; }
+    #zoomImg { max-width:100%; max-height:100%; object-fit:contain; cursor:zoom-in; }
+    #zoomScroll.big { display:block; }
+    #zoomScroll.big #zoomImg { max-width:none; max-height:none; width:250vw; height:auto; cursor:zoom-out; }
+    .thumb .seg button.danger { color:var(--warn); }
     .err { color:var(--warn); font-size:.9rem; min-height:1.2em; margin:10px 0 0; }
     .actions { display:grid; gap:10px; margin-top:16px; }
     .btn { font:inherit; font-weight:700; font-size:1rem; border:0; border-radius:999px; padding:14px 18px; cursor:pointer; }
@@ -99,6 +123,25 @@
           <div class="money"><input id="fee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" /></div>
           <p class="hint" id="feeHint"></p>
         </div>
+        <div id="receiptWrap">
+          <label for="receiptAdd" id="receiptLabel">Receipt photo (optional)</label>
+          <input id="receiptFile" type="file" accept="image/*" tabindex="-1" aria-hidden="true" />
+          <button type="button" class="photo-btn" id="receiptAdd" aria-describedby="receiptHint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+            <span id="receiptAddText">Add receipt photo</span>
+          </button>
+          <div class="thumb" id="receiptHave" hidden>
+            <button type="button" class="thumb-btn" id="receiptZoom" aria-label="Open receipt photo full screen"><img id="receiptThumb" alt="Your receipt photo" /><span class="zoom-tag">Tap to enlarge</span></button>
+            <div class="side">
+              <p class="ok" id="receiptOk">Receipt photo added</p>
+              <div class="seg" role="group" aria-label="Receipt photo">
+                <button type="button" id="receiptRetake">Retake</button>
+                <button type="button" id="receiptRemove" class="danger">Remove</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint" id="receiptHint">Goes into the customer’s email. Check the photo doesn’t show your card number.</p>
+        </div>
         <label for="payEmail">Send e-Transfer to</label>
         <input id="payEmail" type="email" inputmode="email" autocomplete="email" placeholder="your e-Transfer email" />
         <label>Auto-deposit on that email?</label>
@@ -131,6 +174,10 @@
     </section>
   </main>
 
+  <div id="zoomView" hidden role="dialog" aria-modal="true" aria-label="Receipt photo">
+    <div id="zoomBar"><span id="zoomHint">Tap the photo to zoom in. Pinch works too.</span><button type="button" id="zoomClose">Close</button></div>
+    <div id="zoomScroll"><img id="zoomImg" alt="Receipt photo, full size" /></div>
+  </div>
   <script>
   (function () {
     var ENDPOINT = 'https://gvexlysmyqitmvexfxep.supabase.co/functions/v1/toc-order';
@@ -152,7 +199,12 @@
       fee_required: 'Enter the Canada Post express postage.',
       security_qa: 'Auto-deposit is off, so add a security question and answer.',
       send_failed: 'Sending failed. Try again in a minute.',
-      rate_limited: 'Too many tries. Wait a few minutes.'
+      rate_limited: 'Too many tries. Wait a few minutes.',
+      receipt_type: 'That photo couldn’t be read — try taking it again.',
+      receipt_b64: 'That photo couldn’t be read — try taking it again.',
+      receipt_bad_image: 'That photo couldn’t be read — try taking it again.',
+      receipt_too_large: 'That photo is too big — try taking it again.',
+      too_large: 'That photo is too big — try taking it again.'
     };
     function problem(t) { $('loading').hidden = true; $('problem').hidden = false; $('problemText').textContent = t; }
 
@@ -197,9 +249,82 @@
     $('adYes').addEventListener('click', function () { setAD(true); });
     $('adNo').addEventListener('click', function () { setAD(false); });
 
+    // ----- Receipt photo (optional). Shrunk on the phone, sent only with the real confirm. -----
+    var receipt = null; // { b64, type, bytes }
+    var RECEIPT_MAX_SIDE = 2400, RECEIPT_TARGET_BYTES = 2.4 * 1024 * 1024; // sharp enough to read the tracking number; server cap is 3 MB
+    var MSG_PHOTO_READ = 'That photo couldn’t be read — try taking it again.';
+    function loadImage(file) {
+      // <img> first: Safari and Chrome auto-apply EXIF orientation and Safari can decode HEIC this way.
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file), img = new Image();
+        img.onload = function () { URL.revokeObjectURL(url); resolve({ src: img, w: img.naturalWidth, h: img.naturalHeight }); };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('img')); };
+        img.src = url;
+      }).catch(function () {
+        if (typeof createImageBitmap !== 'function') throw new Error('decode');
+        return createImageBitmap(file, { imageOrientation: 'from-image' }).then(function (bmp) { return { src: bmp, w: bmp.width, h: bmp.height }; });
+      });
+    }
+    function b64Bytes(b64) { return Math.floor(b64.length * 3 / 4) - (b64.slice(-2) === '==' ? 2 : b64.slice(-1) === '=' ? 1 : 0); }
+    function shrink(file) {
+      return loadImage(file).then(function (im) {
+        if (!(im.w > 0 && im.h > 0)) throw new Error('decode');
+        var scale = Math.min(1, RECEIPT_MAX_SIDE / Math.max(im.w, im.h)), q = 0.85, out = null;
+        for (var i = 0; i < 6; i++) {
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(im.w * scale)); c.height = Math.max(1, Math.round(im.h * scale));
+          var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); // flatten PNG/HEIC alpha to white
+          ctx.drawImage(im.src, 0, 0, c.width, c.height);
+          var url = c.toDataURL('image/jpeg', q), b64 = url.split(',')[1] || '';
+          out = { b64: b64, type: 'image/jpeg', bytes: b64Bytes(b64), url: url, w: c.width, h: c.height };
+          if (out.bytes <= RECEIPT_TARGET_BYTES) break;
+          if (q > 0.6) q -= 0.1; else scale *= 0.8; // too big: lower quality first, then shrink further
+        }
+        if (im.src.close) im.src.close();
+        if (!out || out.bytes < 64) throw new Error('decode');
+        return out;
+      });
+    }
+    function showReceipt() {
+      var has = !!receipt;
+      $('receiptHave').hidden = !has; $('receiptAdd').hidden = has;
+      if (has) { $('receiptThumb').src = receipt.url; $('receiptOk').textContent = 'Receipt photo added (' + Math.max(1, Math.round(receipt.bytes / 1024)) + ' KB)'; }
+      else { $('receiptThumb').removeAttribute('src'); }
+    }
+    // Full-screen view (owner, 17 Oct 2026: tracking number is small, one tap to enlarge)
+    function openZoom() { if (!receipt) return; $('zoomImg').src = receipt.url; $('zoomScroll').classList.remove('big'); $('zoomView').hidden = false; document.body.style.overflow = 'hidden'; $('zoomClose').focus(); }
+    function closeZoom() { $('zoomView').hidden = true; document.body.style.overflow = ''; $('zoomImg').removeAttribute('src'); $('receiptZoom').focus(); }
+    $('receiptZoom').addEventListener('click', openZoom);
+    $('zoomClose').addEventListener('click', closeZoom);
+    $('zoomImg').addEventListener('click', function (e) {
+      var sc = $('zoomScroll'), img = $('zoomImg'), r = img.getBoundingClientRect();
+      var fx = r.width ? (e.clientX - r.left) / r.width : 0.5, fy = r.height ? (e.clientY - r.top) / r.height : 0.5; // spot tapped, e.g. the tracking number
+      sc.classList.toggle('big');
+      var big = sc.classList.contains('big');
+      $('zoomHint').textContent = big ? 'Drag to move. Tap again to fit.' : 'Tap the photo to zoom in. Pinch works too.';
+      if (big) { sc.scrollLeft = Math.max(0, fx * img.offsetWidth - sc.clientWidth / 2); sc.scrollTop = Math.max(0, fy * img.offsetHeight - sc.clientHeight / 2); }
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('zoomView').hidden) closeZoom(); });
+    function pickReceipt() { $('receiptFile').value = ''; $('receiptFile').click(); }
+    $('receiptAdd').addEventListener('click', pickReceipt);
+    $('receiptRetake').addEventListener('click', pickReceipt);
+    $('receiptRemove').addEventListener('click', function () { receipt = null; showReceipt(); $('err').textContent = ''; $('receiptAdd').focus(); });
+    $('receiptFile').addEventListener('change', function () {
+      var f = this.files && this.files[0]; if (!f) return;
+      $('err').textContent = '';
+      var add = $('receiptAdd'); add.disabled = true; $('receiptAddText').textContent = 'Preparing photo…';
+      $('receiptRetake').disabled = true; $('receiptRemove').disabled = true;
+      shrink(f).then(function (r) { receipt = r; showReceipt(); })
+        .catch(function () { $('err').textContent = MSG_PHOTO_READ; })
+        .then(function () { add.disabled = false; $('receiptAddText').textContent = 'Add receipt photo'; $('receiptRetake').disabled = false; $('receiptRemove').disabled = false; });
+    });
+
     function payload(action) {
-      return { action: action, fee: fee(), payEmail: $('payEmail').value.trim(), autodeposit: autodeposit,
+      var p = { action: action, fee: fee(), payEmail: $('payEmail').value.trim(), autodeposit: autodeposit,
         question: $('q').value.trim(), answer: $('a').value.trim(), eta: $('eta').value.trim(), note: $('note').value.trim() };
+      if (receipt && action === 'confirm') p.receipt = { b64: receipt.b64, type: receipt.type }; // photo only on the real send
+      if (receipt && action === 'preview') p.receiptPreview = true;
+      return p;
     }
     function busy(b, on, label) { b.disabled = on; if (label) b.textContent = label; }
 
@@ -208,7 +333,7 @@
       call(payload('preview')).then(function (res) {
         busy(b, false, 'Preview customer email');
         if (!res.ok) { $('err').textContent = MSG[res.error] || 'Couldn’t build the preview.'; return; }
-        $('previewTo').textContent = 'To: ' + res.preview.to + ' · Subject: ' + res.preview.subject;
+        $('previewTo').textContent = 'To: ' + res.preview.to + ' · Subject: ' + res.preview.subject + (receipt ? ' · Receipt photo attached' : '');
         $('previewFrame').srcdoc = res.preview.html; $('previewBox').hidden = false;
         $('previewBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
@@ -225,7 +350,7 @@
       call(p).then(function (res) {
         if (!res.ok) { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG[res.error] || 'Sending failed.'; return; }
         $('app').hidden = true; $('sent').hidden = false;
-        $('sentText').textContent = order.name + ' (' + res.to + ') now has their total of ' + money(res.total) + ' CAD and e-Transfer instructions for order ' + res.ref + '.';
+        $('sentText').textContent = order.name + ' (' + res.to + ') now has their total of ' + money(res.total) + ' CAD and e-Transfer instructions for order ' + res.ref + '.' + (res.receipt ? ' Your receipt photo is attached.' : '');
         window.scrollTo(0, 0);
       }).catch(function () { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG.send_failed; });
     });
