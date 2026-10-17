@@ -61,6 +61,17 @@
     .thumb .side { flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
     .thumb .side .ok { font-size:.9rem; color:var(--text); font-weight:600; margin:0; }
     .thumb .seg button { min-height:44px; }
+    .thumb-btn { position:relative; padding:0; border:0; background:none; cursor:zoom-in; flex:none; border-radius:10px; }
+    .thumb-btn:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+    .zoom-tag { position:absolute; left:4px; right:4px; bottom:4px; background:rgba(5,12,24,.82); color:#fff; font-size:.72rem; font-weight:700; text-align:center; border-radius:6px; padding:3px 0; }
+    #zoomView { position:fixed; inset:0; z-index:1000; background:#000; display:flex; flex-direction:column; }
+    #zoomView[hidden] { display:none; }
+    #zoomBar { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:calc(10px + env(safe-area-inset-top)) 14px 10px; background:#0a1424; color:#fff; font-size:.9rem; }
+    #zoomBar button { min-height:44px; min-width:88px; font:inherit; font-weight:700; color:#0a1424; background:#2ee6b0; border:0; border-radius:12px; padding:8px 14px; }
+    #zoomScroll { flex:1; overflow:auto; -webkit-overflow-scrolling:touch; display:flex; align-items:center; justify-content:center; }
+    #zoomImg { max-width:100%; max-height:100%; object-fit:contain; cursor:zoom-in; }
+    #zoomScroll.big { display:block; }
+    #zoomScroll.big #zoomImg { max-width:none; max-height:none; width:250vw; height:auto; cursor:zoom-out; }
     .thumb .seg button.danger { color:var(--warn); }
     .err { color:var(--warn); font-size:.9rem; min-height:1.2em; margin:10px 0 0; }
     .actions { display:grid; gap:10px; margin-top:16px; }
@@ -120,7 +131,7 @@
             <span id="receiptAddText">Add receipt photo</span>
           </button>
           <div class="thumb" id="receiptHave" hidden>
-            <img id="receiptThumb" alt="Your receipt photo" />
+            <button type="button" class="thumb-btn" id="receiptZoom" aria-label="Open receipt photo full screen"><img id="receiptThumb" alt="Your receipt photo" /><span class="zoom-tag">Tap to enlarge</span></button>
             <div class="side">
               <p class="ok" id="receiptOk">Receipt photo added</p>
               <div class="seg" role="group" aria-label="Receipt photo">
@@ -163,6 +174,10 @@
     </section>
   </main>
 
+  <div id="zoomView" hidden role="dialog" aria-modal="true" aria-label="Receipt photo">
+    <div id="zoomBar"><span id="zoomHint">Tap the photo to zoom in. Pinch works too.</span><button type="button" id="zoomClose">Close</button></div>
+    <div id="zoomScroll"><img id="zoomImg" alt="Receipt photo, full size" /></div>
+  </div>
   <script>
   (function () {
     var ENDPOINT = 'https://gvexlysmyqitmvexfxep.supabase.co/functions/v1/toc-order-test';
@@ -236,7 +251,7 @@
 
     // ----- Receipt photo (optional). Shrunk on the phone, sent only with the real confirm. -----
     var receipt = null; // { b64, type, bytes }
-    var RECEIPT_MAX_SIDE = 1600, RECEIPT_TARGET_BYTES = 1.5 * 1024 * 1024;
+    var RECEIPT_MAX_SIDE = 2400, RECEIPT_TARGET_BYTES = 2.4 * 1024 * 1024; // sharp enough to read the tracking number; server cap is 3 MB
     var MSG_PHOTO_READ = 'That photo couldn’t be read — try taking it again.';
     function loadImage(file) {
       // <img> first: Safari and Chrome auto-apply EXIF orientation and Safari can decode HEIC this way.
@@ -254,7 +269,7 @@
     function shrink(file) {
       return loadImage(file).then(function (im) {
         if (!(im.w > 0 && im.h > 0)) throw new Error('decode');
-        var scale = Math.min(1, RECEIPT_MAX_SIDE / Math.max(im.w, im.h)), q = 0.8, out = null;
+        var scale = Math.min(1, RECEIPT_MAX_SIDE / Math.max(im.w, im.h)), q = 0.85, out = null;
         for (var i = 0; i < 6; i++) {
           var c = document.createElement('canvas');
           c.width = Math.max(1, Math.round(im.w * scale)); c.height = Math.max(1, Math.round(im.h * scale));
@@ -263,7 +278,7 @@
           var url = c.toDataURL('image/jpeg', q), b64 = url.split(',')[1] || '';
           out = { b64: b64, type: 'image/jpeg', bytes: b64Bytes(b64), url: url, w: c.width, h: c.height };
           if (out.bytes <= RECEIPT_TARGET_BYTES) break;
-          if (q > 0.55) q -= 0.1; else scale *= 0.8; // too big: lower quality first, then shrink further
+          if (q > 0.6) q -= 0.1; else scale *= 0.8; // too big: lower quality first, then shrink further
         }
         if (im.src.close) im.src.close();
         if (!out || out.bytes < 64) throw new Error('decode');
@@ -276,6 +291,20 @@
       if (has) { $('receiptThumb').src = receipt.url; $('receiptOk').textContent = 'Receipt photo added (' + Math.max(1, Math.round(receipt.bytes / 1024)) + ' KB)'; }
       else { $('receiptThumb').removeAttribute('src'); }
     }
+    // Full-screen view (owner, 17 Oct 2026: tracking number is small, one tap to enlarge)
+    function openZoom() { if (!receipt) return; $('zoomImg').src = receipt.url; $('zoomScroll').classList.remove('big'); $('zoomView').hidden = false; document.body.style.overflow = 'hidden'; $('zoomClose').focus(); }
+    function closeZoom() { $('zoomView').hidden = true; document.body.style.overflow = ''; $('zoomImg').removeAttribute('src'); $('receiptZoom').focus(); }
+    $('receiptZoom').addEventListener('click', openZoom);
+    $('zoomClose').addEventListener('click', closeZoom);
+    $('zoomImg').addEventListener('click', function (e) {
+      var sc = $('zoomScroll'), img = $('zoomImg'), r = img.getBoundingClientRect();
+      var fx = r.width ? (e.clientX - r.left) / r.width : 0.5, fy = r.height ? (e.clientY - r.top) / r.height : 0.5; // spot tapped, e.g. the tracking number
+      sc.classList.toggle('big');
+      var big = sc.classList.contains('big');
+      $('zoomHint').textContent = big ? 'Drag to move. Tap again to fit.' : 'Tap the photo to zoom in. Pinch works too.';
+      if (big) { sc.scrollLeft = Math.max(0, fx * img.offsetWidth - sc.clientWidth / 2); sc.scrollTop = Math.max(0, fy * img.offsetHeight - sc.clientHeight / 2); }
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('zoomView').hidden) closeZoom(); });
     function pickReceipt() { $('receiptFile').value = ''; $('receiptFile').click(); }
     $('receiptAdd').addEventListener('click', pickReceipt);
     $('receiptRetake').addEventListener('click', pickReceipt);
