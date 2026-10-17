@@ -174,7 +174,7 @@ function checkReceipt(r: unknown): ReceiptCheck {
   if (r == null) return { ok: true, receipt: null };
   if (typeof r !== "object" || Array.isArray(r)) return { ok: false, error: "receipt_type" };
   const type = (r as Record<string, unknown>).type, b64 = (r as Record<string, unknown>).b64;
-  if (typeof type !== "string" || !RECEIPT_MIMES[type]) return { ok: false, error: "receipt_type" };
+  if (typeof type !== "string" || !Object.hasOwn(RECEIPT_MIMES, type)) return { ok: false, error: "receipt_type" };
   if (typeof b64 !== "string" || !b64) return { ok: false, error: "receipt_b64" };
   // Strict base64: charset only, no whitespace/data: prefix, padding only at the end, length multiple of 4.
   if (b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) return { ok: false, error: "receipt_b64" };
@@ -393,7 +393,7 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const receiptHtml = receipt || (dry && receiptPreview)
     ? section(panel(`<div style="font-weight:700;color:#0a1424;font-size:13px;margin-bottom:8px">${receiptCaption}</div>` +
       (receipt
-        ? `<img src="cid:${inlineName}" alt="Canada Post receipt photo" width="100%" style="display:block;width:100%;max-width:520px;height:auto;border:1px solid #dbe3ee;border-radius:8px">`
+        ? `<img src="cid:${esc(inlineName)}" alt="Canada Post receipt photo" width="100%" style="display:block;width:100%;max-width:520px;height:auto;border:1px solid #dbe3ee;border-radius:8px">`
         : `<div style="border:1px dashed #9fb0c7;border-radius:8px;padding:28px 12px;text-align:center;color:#5d6b80;font-size:13px">Receipt photo attached &mdash; it appears here in the sent email.</div>`) +
       `<div style="font-size:13px;color:#3c4b63;margin-top:8px"><strong>Tracking number too small?</strong> Tap the attached photo <strong>${esc(attachName)}</strong> to open it full screen, then pinch to zoom in.</div>`))
     : "";
@@ -470,6 +470,8 @@ Deno.serve(async (req) => {
   // receipt photo (<= 3 MB decoded, so ~4 MB of base64 plus the rest of the form).
   const MAX_BODY = 30_000, MAX_CONFIRM_BODY = 4_300_000;
   let b: Record<string, unknown>, rawLen = 0;
+  const declared = Number(req.headers.get("content-length") || "0");
+  if (declared > MAX_CONFIRM_BODY) return json(413, { ok: false, error: "too_large" }); // reject early, before reading the body
   try {
     const raw = await req.text();
     rawLen = raw.length;
