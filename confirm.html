@@ -111,13 +111,34 @@
         <div class="row" id="discRow" hidden style="color:#ff9500;font-weight:700"><span id="discName">Welcome coupon</span><span id="discShow"></span></div>
         <div class="row"><span id="feeName">Delivery</span><span id="feeShow"></span></div>
         <div class="row" id="fuelRow" hidden><span id="fuelName"></span><span id="fuelShow"></span></div>
-        <div class="row total"><span>Total due</span><span id="total"></span></div>
+        <div class="row" id="origRow" hidden><span>Original total</span><span id="origShow"></span></div>
+        <div class="row" id="rmRow" hidden style="color:#ff9500;font-weight:700"><span>Delivery charge removed</span><span id="rmShow"></span></div>
+        <div class="row" id="adjRow" hidden style="color:#ff9500;font-weight:700"><span id="adjName">Price adjustment</span><span id="adjShow"></span></div>
+        <div class="row total"><span id="totalName">Total due</span><span id="total"></span></div>
       </div>
 
       <div class="card kv" id="cust"></div>
 
       <div class="card pay">
-        <p class="sec-title">Payment details</p>
+        <p class="sec-title">Change the price (optional)</p>
+        <div id="rmWrap" hidden>
+          <label>Delivery charge</label>
+          <div class="seg" role="group" aria-label="Delivery charge">
+            <button type="button" id="rmNo" aria-pressed="true">Keep it</button>
+            <button type="button" id="rmYes" aria-pressed="false">Remove it</button>
+          </div>
+        </div>
+        <label>Price adjustment</label>
+        <div class="seg" role="group" aria-label="Price adjustment">
+          <button type="button" id="adjOff" aria-pressed="true">Take off</button>
+          <button type="button" id="adjOn" aria-pressed="false">Add on</button>
+        </div>
+        <div class="money" style="margin-top:8px"><input id="adj" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" aria-label="Adjustment amount" /></div>
+        <label for="adjNote">Reason shown to customer (optional)</label>
+        <input id="adjNote" type="text" maxlength="140" placeholder="e.g. Loyal customer" />
+        <p class="hint">The customer’s email shows the original total and the new total.</p>
+
+        <p class="sec-title" style="margin-top:18px">Payment details</p>
         <div id="feeWrap">
           <label for="fee" id="feeLabel">Delivery fee</label>
           <div class="money"><input id="fee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" /></div>
@@ -204,7 +225,9 @@
       receipt_b64: 'That photo couldn’t be read — try taking it again.',
       receipt_bad_image: 'That photo couldn’t be read — try taking it again.',
       receipt_too_large: 'That photo is too big — try taking it again.',
-      too_large: 'That photo is too big — try taking it again.'
+      too_large: 'That photo is too big — try taking it again.',
+      adjust_amount: 'Check the price adjustment amount.',
+      adjust_below_zero: 'The adjustment can’t bring the total below $0.'
     };
     function problem(t) { $('loading').hidden = true; $('problem').hidden = false; $('problemText').textContent = t; }
 
@@ -220,9 +243,10 @@
         return '<div class="row"><span>' + i.qty + ' × ' + esc(i.name) + (i.size ? ' <span style="color:var(--text-2);font-weight:400">' + esc(i.size) + '</span>' : '') + '</span><span>' + money(i.qty * i.price) + '</span></div>';
       }).join('');
       $('cust').innerHTML = '<b>Customer:</b> ' + esc(order.name) + '<br><b>Email:</b> ' + esc(order.email || '—') + '<br><b>Phone:</b> ' + esc(order.phone || '—') +
-        '<br><b>Delivery:</b> ' + esc(order.method) + '<br><b>Address:</b> ' + esc(order.address) + (order.notes ? '<br><b>Notes:</b> ' + esc(order.notes) : '');
+        '<br><b>Delivery:</b> ' + esc(order.method) + (order.address ? '<br><b>Address:</b> ' + esc(order.address) : '') + (order.notes ? '<br><b>Notes:</b> ' + esc(order.notes) : '');
       if (order.express) { $('feeLabel').textContent = 'Canada Post express postage'; $('feeName').textContent = 'Express mail (Canada Post)'; $('feeHint').textContent = 'Enter the Canada Post rate for this address.'; }
       else { $('feeWrap').hidden = true; }
+      $('rmWrap').hidden = !(order.local && !order.local.free && order.local.delivery + order.local.fuel > 0);
       $('payEmail').value = order.payEmailDefault || '';
       if (!order.email) { $('send').disabled = true; $('prev').disabled = true; $('err').textContent = MSG.no_customer_email; }
       recalc();
@@ -230,6 +254,13 @@
 
     function fee() { if (!order || !order.express) return 0; var v = parseFloat($('fee').value); return isFinite(v) && v > 0 ? v : 0; }
     function extra() { var l = order && order.local; return l ? l.delivery + l.fuel : fee(); }
+    var removeDelivery = false, adjSign = -1;
+    function rmAmt() { return removeDelivery && order && order.local ? order.local.delivery + order.local.fuel : 0; }
+    function adjAmt() { var v = parseFloat($('adj').value); return isFinite(v) && v > 0 ? Math.round(v * 100) / 100 * adjSign : 0; }
+    function original() { return order.subtotal - disc() + extra(); }
+    function newTotal() { return Math.round((original() - rmAmt() + adjAmt()) * 100) / 100; }
+    function setRm(on) { removeDelivery = on; $('rmYes').setAttribute('aria-pressed', on); $('rmNo').setAttribute('aria-pressed', !on); recalc(); }
+    function setAdj(sign) { adjSign = sign; $('adjOff').setAttribute('aria-pressed', sign < 0); $('adjOn').setAttribute('aria-pressed', sign > 0); recalc(); }
     function disc() { return order && order.discount > 0 ? order.discount : 0; }
     function recalc() {
       if (!order) return;
@@ -241,11 +272,25 @@
         $('feeName').textContent = 'In-person delivery';
         $('feeShow').textContent = l.free ? 'Free' : money(l.delivery);
         $('fuelRow').hidden = true;
-      } else { $('fuelRow').hidden = true; $('feeShow').textContent = fee() ? money(fee()) : 'enter fee'; }
-      $('total').textContent = money(order.subtotal - disc() + extra()) + ' CAD';
+      } else if (order.pickup) { $('fuelRow').hidden = true; $('feeName').textContent = 'Pick up in person'; $('feeShow').textContent = 'No delivery charge'; }
+      else { $('fuelRow').hidden = true; $('feeShow').textContent = fee() ? money(fee()) : 'enter fee'; }
+      var changed = rmAmt() > 0 || adjAmt() !== 0;
+      $('origRow').hidden = !changed; $('origShow').textContent = money(original()) + ' CAD';
+      $('rmRow').hidden = !(rmAmt() > 0); $('rmShow').textContent = '\u2212' + money(rmAmt());
+      var a = adjAmt(), note = $('adjNote').value.trim();
+      $('adjRow').hidden = a === 0; $('adjName').textContent = note ? 'Price adjustment (' + note + ')' : 'Price adjustment';
+      $('adjShow').textContent = (a < 0 ? '\u2212' : '+') + money(Math.abs(a));
+      $('totalName').textContent = changed ? 'New total due' : 'Total due';
+      $('total').textContent = money(newTotal()) + ' CAD';
     }
     function setAD(on) { autodeposit = on; $('adYes').setAttribute('aria-pressed', on); $('adNo').setAttribute('aria-pressed', !on); $('qa').hidden = on; }
     $('fee').addEventListener('input', function () { recalc(); $('err').textContent = ''; });
+    $('adj').addEventListener('input', function () { recalc(); $('err').textContent = ''; });
+    $('adjNote').addEventListener('input', recalc);
+    $('rmYes').addEventListener('click', function () { setRm(true); });
+    $('rmNo').addEventListener('click', function () { setRm(false); });
+    $('adjOff').addEventListener('click', function () { setAdj(-1); });
+    $('adjOn').addEventListener('click', function () { setAdj(1); });
     $('adYes').addEventListener('click', function () { setAD(true); });
     $('adNo').addEventListener('click', function () { setAD(false); });
 
@@ -321,7 +366,8 @@
 
     function payload(action) {
       var p = { action: action, fee: fee(), payEmail: $('payEmail').value.trim(), autodeposit: autodeposit,
-        question: $('q').value.trim(), answer: $('a').value.trim(), eta: $('eta').value.trim(), note: $('note').value.trim() };
+        question: $('q').value.trim(), answer: $('a').value.trim(), eta: $('eta').value.trim(), note: $('note').value.trim(),
+        removeDelivery: removeDelivery, adjust: adjAmt(), adjustNote: $('adjNote').value.trim() };
       if (receipt && action === 'confirm') p.receipt = { b64: receipt.b64, type: receipt.type }; // photo only on the real send
       if (receipt && action === 'preview') p.receiptPreview = true;
       return p;
@@ -345,7 +391,8 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(p.payEmail)) { $('err').textContent = MSG.pay_email; return; }
       if (order.express && !(p.fee > 0)) { $('err').textContent = MSG.fee_required; return; }
       if (!autodeposit && (!p.question || !p.answer)) { $('err').textContent = MSG.security_qa; return; }
-      if (!window.confirm('Send the payment request for ' + money(order.subtotal - disc() + extra()) + ' CAD to ' + order.email + '?')) return;
+      if (newTotal() < 0) { $('err').textContent = MSG.adjust_below_zero; return; }
+      if (!window.confirm('Send the payment request for ' + money(newTotal()) + ' CAD to ' + order.email + '?')) return;
       busy(b, true, 'Sending…');
       call(p).then(function (res) {
         if (!res.ok) { busy(b, false, 'Send payment request to customer'); $('err').textContent = MSG[res.error] || 'Sending failed.'; return; }

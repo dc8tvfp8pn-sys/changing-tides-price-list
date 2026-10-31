@@ -157,6 +157,7 @@
   var FUEL_NOTE = 'Includes our Rising Tide fuel surcharge. Fuel prices are running high, and this keeps in-person delivery running until the tide goes out.';
   function fees(sum, method) {
     if (!method) return { delivery: 0, fuel: 0, free: false, express: false, none: true };
+    if (method === METHODS[2]) return { delivery: 0, fuel: 0, free: false, express: false, pickup: true };
     if (method !== METHODS[0]) return { delivery: 0, fuel: 0, free: false, express: true };
     var free = FREE_OVER != null && sum >= FREE_OVER;
     return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free: free, express: false };
@@ -166,6 +167,8 @@
     h += '<div class="order-fee-row"><span>Items</span><span>' + money(t.sum) + '</span></div>';
     if (f.none) {
       h += '<div class="order-fee-row"><span>Delivery</span><span>Choose below</span></div>';
+    } else if (f.pickup) {
+      h += '<div class="order-fee-row"><span>Pick up in person</span><span>No delivery charge</span></div>';
     } else if (f.express) {
       h += '<div class="order-fee-row"><span>Express mail</span><span>Canada Post rate</span></div>';
     } else if (f.free) {
@@ -175,11 +178,11 @@
     }
     h += '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum + f.delivery + f.fuel) + (f.express ? '+' : '') + '</span></div>';
     h += '<p class="order-total-note">' + (f.express ? 'CAD, plus Canada Post express postage. ' : 'CAD. ') + 'Final total confirmed by our team before payment.</p>';
-    if (!f.none && !f.express && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
+    if (!f.none && !f.express && !f.pickup && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
     if (!f.express && FREE_OVER != null && !f.free) h += '<p class="order-total-note">Free in-person delivery on orders of ' + money(FREE_OVER) + ' or more.</p>';
     return h;
   }
-  var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)'];
+  var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)', 'Pick up in person'];
   var PROVINCES = ['Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador', 'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec', 'Saskatchewan', 'Yukon'];
   var PROV_CODE = { 'Alberta': 'AB', 'British Columbia': 'BC', 'Manitoba': 'MB', 'New Brunswick': 'NB', 'Newfoundland and Labrador': 'NL', 'Northwest Territories': 'NT', 'Nova Scotia': 'NS', 'Nunavut': 'NU', 'Ontario': 'ON', 'Prince Edward Island': 'PE', 'Quebec': 'QC', 'Saskatchewan': 'SK', 'Yukon': 'YT' };
   var form = { name: '', phone: '', email: '', method: '', street: '', unit: '', city: '', province: 'Alberta', postal: '', address: '', notes: '', ack: false };
@@ -220,7 +223,7 @@
           field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method"><option value=""' + (form.method ? '' : ' selected') + ' disabled>Choose delivery method</option>' +
             METHODS.map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
           '<p class="order-total-note" id="ofMethodNote">' + methodNote() + '</p>' +
-          '<fieldset class="order-addr"><legend>Delivery address</legend>' +
+          '<fieldset class="order-addr"' + (form.method === METHODS[2] ? ' hidden' : '') + '><legend>Delivery address</legend>' +
             field('ofStreet', 'Street address', '<input id="ofStreet" name="street" autocomplete="address-line1" placeholder="123 Main Street" value="' + esc(form.street) + '">') +
             field('ofUnit', 'Unit / apt (optional)', '<input id="ofUnit" name="unit" autocomplete="address-line2" placeholder="Unit 4" value="' + esc(form.unit) + '">') +
             field('ofCity', 'City', '<input id="ofCity" name="city" autocomplete="address-level2" placeholder="Edmonton" value="' + esc(form.city) + '">') +
@@ -323,6 +326,7 @@
   }
 
   function methodNote() {
+    if (form.method === METHODS[2]) return 'No delivery charge. We’ll send you the pick-up details with your order confirmation.';
     return form.method === METHODS[1]
       ? 'Express mail is charged at the Canada Post rate for your address. We’ll confirm the exact amount before you pay.'
       : form.method === METHODS[0]
@@ -337,6 +341,7 @@
     form.name = g('ofName'); form.phone = g('ofPhone'); form.email = g('ofEmail');
     form.method = g('ofMethod') || form.method; form.street = g('ofStreet'); form.unit = g('ofUnit'); form.city = g('ofCity'); form.province = g('ofProv') || form.province; form.postal = g('ofPostal'); form.address = fullAddress(); form.notes = g('ofNotes');
     var mn = body.querySelector('#ofMethodNote'); if (mn) mn.textContent = methodNote();
+    var fa = body.querySelector('.order-addr'); if (fa) fa.hidden = form.method === METHODS[2];
     var ot = body.querySelector('#orderTotals'); if (ot) ot.innerHTML = totalsHtml();
     var a = body.querySelector('#ofAck'); form.ack = !!(a && a.checked);
   }
@@ -362,7 +367,7 @@
       'Phone: ' + (form.phone.trim() || '—'),
       'Email: ' + (form.email.trim() || '—'),
       'Delivery method: ' + form.method,
-      'Delivery address: ' + form.address.trim().replace(/\s*\n\s*/g, ', '),
+      'Delivery address: ' + (form.method === METHODS[2] ? '—' : form.address.trim().replace(/\s*\n\s*/g, ', ')),
       '',
       'Items:'
     ];
@@ -371,7 +376,8 @@
     });
     var f = fees(t.sum, form.method);
     lines.push('', 'Items: ' + money(t.sum));
-    if (f.express) lines.push('Express mail: Canada Post rate (confirmed before payment)');
+    if (f.pickup) lines.push('Pick up in person: no delivery charge');
+    else if (f.express) lines.push('Express mail: Canada Post rate (confirmed before payment)');
     else lines.push('In-person delivery: ' + (f.free ? 'Free' : money(f.delivery)));
     lines.push('Estimated total: ' + money(t.sum + f.delivery + f.fuel) + ' CAD' + (f.express ? ' + Canada Post express postage' : '') + ' (final total confirmed before payment)');
     if (form.notes.trim()) lines.push('', 'Notes: ' + form.notes.trim());
@@ -385,11 +391,12 @@
     if (!form.name.trim()) return 'Please enter your name.';
     if (!form.phone.trim() && !form.email.trim()) return 'Please enter a phone number or email so we can confirm.';
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'That email address doesn’t look right.';
-    if (!form.street.trim()) return 'Please enter your street address.';
-    if (!form.city.trim()) return 'Please enter your city.';
-    if (!form.postal.trim()) return 'Please enter your postal code.';
-    if (!postalOk(form.postal)) return 'That postal code doesn’t look right. It should look like T5K 1A1.';
     if (!form.method) return 'Please choose a delivery method.';
+    var pickup = form.method === METHODS[2];
+    if (!pickup && !form.street.trim()) return 'Please enter your street address.';
+    if (!pickup && !form.city.trim()) return 'Please enter your city.';
+    if (!pickup && !form.postal.trim()) return 'Please enter your postal code.';
+    if (!pickup && !postalOk(form.postal)) return 'That postal code doesn’t look right. It should look like T5K 1A1.';
     if (form.method === METHODS[0] && !inArea(form.postal)) return 'In-person delivery is for ' + AREA_TEXT + ' only. For your postal code, please choose Express mail.';
     if (!form.ack) return 'Please tick the research-purposes box.';
     return '';
@@ -421,7 +428,7 @@
     var hp = body.querySelector('#ofWebsite');
     var payload = {
       name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(),
-      method: form.method, address: form.address.trim(), notes: form.notes.trim(), ack: form.ack,
+      method: form.method, address: form.method === METHODS[2] ? '' : form.address.trim(), notes: form.notes.trim(), ack: form.ack,
       website: hp ? hp.value : '',
       items: totals().list.map(function (it) { return { name: it.name, size: it.strength, qty: it.qty, price: it.price }; })
     };

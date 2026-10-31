@@ -7,7 +7,13 @@ import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const ORDER_TO = "orders@tidesofchange.ca";
 const SENDER = "Tides of Change Orders <orders@tidesofchange.ca>";
-const METHODS = ["In-person delivery (Edmonton area)", "Express mail (Canada Post rate)"];
+const METHODS = ["In-person delivery (Edmonton area)", "Express mail (Canada Post rate)", "Pick up in person"];
+// Pick up (owner 30 Oct 2026): the customer collects the order; no delivery charge
+// and no address needed. The owner sends pick-up details after payment.
+const PICKUP = METHODS[2];
+// Owner price adjustment on the Confirm page (owner 30 Oct 2026): one +/- line
+// with an optional note; the customer email shows the original and the new total.
+const ADJUST_MAX = 10000;
 const LOGO = "https://tidesofchange.ca/assets/icon-512-v9.png";
 // Email art. Mail apps (iPhone Mail, Outlook) repaint text/background COLOURS
 // in light mode, turning the navy design grey. They do not repaint IMAGES, so
@@ -257,7 +263,8 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
   if (!phone && !email) return json(400, { ok: false, error: "contact" });
   if (email && !emailOk(email)) return json(400, { ok: false, error: "email" });
   if (!METHODS.includes(method)) return json(400, { ok: false, error: "method_choice" });
-  if (!address) return json(400, { ok: false, error: "address" });
+  const pickup = method === PICKUP;
+  if (!address && !pickup) return json(400, { ok: false, error: "address" });
   if (method === METHODS[0] && !AREA_RE.test(postalFsa(address))) return json(400, { ok: false, error: "out_of_area" });
   if (!ack) return json(400, { ok: false, error: "ack" });
   if (!items.length) return json(400, { ok: false, error: "items" });
@@ -294,20 +301,22 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
 
   const lines = items.map((i) => `• ${i.qty} × ${i.name}${i.size ? " " + i.size : ""} @ ${money(i.price)} = ${money(i.qty * i.price)}`);
   const lf = localFees(subtotal);
-  const est = subtotal - discount + (express ? 0 : lf.delivery + lf.fuel);
+  const est = subtotal - discount + (express || pickup ? 0 : lf.delivery + lf.fuel);
   const feeText = express ? ["Express mail: Canada Post rate (confirmed before payment)"]
+    : pickup ? ["Pick up in person: no delivery charge"]
     : [`In-person delivery: ${lf.free ? "Free" : money(lf.delivery)}`];
   const estLine = [`Items: ${money(subtotal)}`, ...bonusText, ...feeText, `Estimated total: ${money(est)} CAD${express ? " + Canada Post express postage" : ""} (final total confirmed before payment)`].join("\n");
   const estRows = lineRow("Items", money(subtotal)) + bonusRow +
     (express ? lineRow("Express mail", "Canada Post rate")
+      : pickup ? lineRow("Pick up in person", "No delivery charge")
       : lineRow("In-person delivery", lf.free ? "Free" : money(lf.delivery))) +
     lineRow("Estimated total", `${money(est)} CAD${express ? " +" : ""}`, true);
-  const fuelBlurb = !express && !lf.free ? textBlock(`<span style="font-size:12px;color:#5d6b80">${FUEL_NOTE}</span>`) : "";
+  const fuelBlurb = !express && !pickup && !lf.free ? textBlock(`<span style="font-size:12px;color:#5d6b80">${FUEL_NOTE}</span>`) : "";
 
   const ownerText = [
     `NEW ORDER ${ref} — Tides of Change`, "", ...(priceNote ? [priceNote, ""] : []),
     `Name: ${name}`, `Phone: ${phone || "—"}`, `Email: ${email || "—"}`,
-    `Delivery method: ${method}`, `Delivery address: ${address.replace(/\s*\n\s*/g, ", ")}`,
+    `Delivery method: ${method}`, ...(address ? [`Delivery address: ${address.replace(/\s*\n\s*/g, ", ")}`] : []),
     "", "Items:", ...lines, "", estLine, "",
     "Customer confirmed: research purposes only.",
     ...(notes ? ["", "Notes:", notes] : []),
@@ -316,7 +325,7 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
 
   const details = textBlock(
     `<strong style="color:#0a1424">Phone:</strong> ${esc(phone || "—")}<br><strong style="color:#0a1424">Email:</strong> ${esc(email || "—")}<br>` +
-    `<strong style="color:#0a1424">Delivery:</strong> ${esc(method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(address)}` +
+    `<strong style="color:#0a1424">Delivery:</strong> ${esc(method)}` + (address ? `<br><strong style="color:#0a1424">Address:</strong> ${esc(address)}` : "") +
     (notes ? `<br><strong style="color:#0a1424">Notes:</strong> ${esc(notes)}` : ""));
   const ownerHtml = shell(`New order from ${esc(name)}`,
     email ? "Check stock, then tap the button to confirm and send the customer their payment details."
@@ -350,7 +359,8 @@ async function handleOrder(apiKey: string, b: Record<string, unknown>, user: Bon
       html_body: shell(`Thanks, ${esc(name)} — we got your order`,
         `We&rsquo;ll check everything and get back to you shortly. Here&rsquo;s what you asked for:`,
         orderPanel(ref, items, estRows) + fuelBlurb + pay +
-        textBlock(`<strong style="color:#0a1424">Delivery:</strong> ${esc(method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(address)}`)),
+        textBlock(`<strong style="color:#0a1424">Delivery:</strong> ${esc(method)}` + (address ? `<br><strong style="color:#0a1424">Address:</strong> ${esc(address)}` : "") +
+          (pickup ? `<br>We&rsquo;ll send you the pick-up details with your order confirmation.` : ""))),
       custom_headers: [{ header: "Reply-To", value: ORDER_TO }],
     });
   }
@@ -368,7 +378,17 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const lf = localFees(subtotal);
   const fee = express ? Math.max(0, Math.min(10000, Math.round((Number(b.fee) || 0) * 100) / 100)) : 0;
   const discount = Math.max(0, Math.min(subtotal, round2(Number(o.discount) || 0)));
-  const total = subtotal - discount + (express ? fee : lf.delivery + lf.fuel);
+  const pickup = o.method === PICKUP;
+  const local = !express && !pickup; // in-person delivery
+  const standardFee = express ? fee : local ? lf.delivery + lf.fuel : 0;
+  // Owner choices on the Confirm page: remove the delivery charge, and one +/- price adjustment.
+  const removeDelivery = local && b.removeDelivery === true && standardFee > 0;
+  const rawAdjust = Number(b.adjust);
+  const adjust = Number.isFinite(rawAdjust) ? round2(rawAdjust) : 0;
+  const adjustNote = str(b.adjustNote, 140);
+  const original = subtotal - discount + standardFee;
+  const total = round2(original - (removeDelivery ? standardFee : 0) + adjust);
+  const changed = removeDelivery || adjust !== 0;
   const payEmail = str(b.payEmail, 200) || PAY_EMAIL_DEFAULT;
   const autodeposit = b.autodeposit === true;
   const question = str(b.question, 200);
@@ -377,12 +397,15 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
   const note = str(b.note, 600);
   const receiptPreview = b.receiptPreview === true; // page asks the preview to show where the photo will go
 
-  const view = { local: express ? null : { delivery: lf.delivery, fuel: lf.fuel, free: lf.free, fuelName: FUEL_NAME }, ref: o.ref, name: o.name, email: o.email, phone: o.phone, method: o.method, address: o.address, notes: o.notes, items, subtotal, discount, discountLabel: discount ? BONUS_LABEL : "", express, payEmailDefault: PAY_EMAIL_DEFAULT };
+  const view = { pickup, local: local ? { delivery: lf.delivery, fuel: lf.fuel, free: lf.free, fuelName: FUEL_NAME } : null, ref: o.ref, name: o.name, email: o.email, phone: o.phone, method: o.method, address: o.address, notes: o.notes, items, subtotal, discount, discountLabel: discount ? BONUS_LABEL : "", express, payEmailDefault: PAY_EMAIL_DEFAULT };
   if (str(b.action, 20) === "view") return json(200, { ok: true, order: view });
 
   if (!o.email) return json(400, { ok: false, error: "no_customer_email" });
   if (!emailOk(payEmail)) return json(400, { ok: false, error: "pay_email" });
   if (express && !(fee > 0)) return json(400, { ok: false, error: "fee_required" });
+  if (!Number.isFinite(rawAdjust) && b.adjust !== undefined && b.adjust !== null && b.adjust !== "") return json(400, { ok: false, error: "adjust_amount" });
+  if (Math.abs(adjust) > ADJUST_MAX) return json(400, { ok: false, error: "adjust_amount" });
+  if (total < 0) return json(400, { ok: false, error: "adjust_below_zero" });
   if (!autodeposit && (!question || !answer)) return json(400, { ok: false, error: "security_qa" });
   const rc = checkReceipt(dry ? undefined : b.receipt); // the photo only travels with the real confirm
   if (!rc.ok) return json(400, { ok: false, error: rc.error });
@@ -399,11 +422,22 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
     : "";
 
   const feeLines: [string, string][] = express ? [["Express mail (Canada Post)", money(fee)]]
+    : pickup ? [["Pick up in person", "No delivery charge"]]
     : [["In-person delivery", lf.free ? "Free" : money(lf.delivery)]];
+  const signed = (n: number) => (n < 0 ? `-${money(-n)}` : `+${money(n)}`);
+  const adjustLabel = adjustNote ? `Price adjustment (${adjustNote})` : "Price adjustment";
+  const changeLines: [string, string][] = [
+    ...(removeDelivery ? [["Delivery charge removed", `-${money(standardFee)}`] as [string, string]] : []),
+    ...(adjust !== 0 ? [[adjustLabel, signed(adjust)] as [string, string]] : []),
+  ];
   const totals = lineRow("Items", `${money(subtotal)}`) +
     (discount ? lineRow(BONUS_LABEL, `&minus;${money(discount)}`) : "") +
     feeLines.map(([k, v]) => lineRow(k, v)).join("") +
-    lineRow("Total due", `${money(total)} CAD`, true);
+    (changed
+      ? lineRow("Original total", `${money(original)} CAD`) +
+        changeLines.map(([k, v]) => lineRow(esc(k), v.replace(/^-/, "&minus;"))).join("") +
+        lineRow("New total due", `${money(total)} CAD`, true)
+      : lineRow("Total due", `${money(total)} CAD`, true));
 
   const steps = [
     `Send <strong style="color:#0a1424">${money(total)} CAD</strong> by Interac e-Transfer to <strong style="color:#0a1424">${esc(payEmail)}</strong>`,
@@ -420,25 +454,28 @@ async function handleConfirm(apiKey: string, b: Record<string, unknown>, dry: bo
     ? "Your order is on its way by Canada Post express mail. The tracking number is on the receipt above."
     : express
     ? "Once your payment arrives, we&rsquo;ll ship your order by express mail and send you the tracking number."
+    : pickup
+    ? "Once your payment arrives, we&rsquo;ll contact you to set up a pick-up time and place."
     : "Once your payment arrives, we&rsquo;ll contact you to arrange your in-person delivery.";
   const html = shell(`Your order is confirmed, ${esc(o.name)}`,
     "Thank you for your order. Everything is confirmed and ready. Here are your final total and payment details.",
     orderPanel(o.ref, items, totals) + receiptHtml + payPanel +
     textBlock((eta ? `<strong style="color:#0a1424">Timing:</strong> ${esc(eta)}<br>` : "") +
-      `<strong style="color:#0a1424">Delivery:</strong> ${esc(o.method)}<br><strong style="color:#0a1424">Address:</strong> ${esc(o.address)}` +
+      `<strong style="color:#0a1424">Delivery:</strong> ${esc(o.method)}` + (o.address ? `<br><strong style="color:#0a1424">Address:</strong> ${esc(o.address)}` : "") +
       (note ? `<br><br>${esc(note).replace(/\n/g, "<br>")}` : "") + `<br><br>${next}`) +
     textBlock(`Thank you for choosing Tides of Change.<br><strong style="color:#0a1424">Tides of Change</strong> &middot; <a href="mailto:${ORDER_TO}" style="color:#0b6f9e">${ORDER_TO}</a>`));
 
   const text = [
     `Hi ${o.name},`, "", "Thank you for your order. Everything is confirmed and ready.", "",
     `Order: ${o.ref}`, ...items.map((i) => `• ${i.qty} × ${i.name}${i.size ? " " + i.size : ""} = ${money(i.qty * i.price)}`),
-    `Items: ${money(subtotal)}`, ...(discount ? [`${BONUS_LABEL}: -${money(discount)}`] : []), ...feeLines.map(([k, v]) => `${k}: ${v}`), `Total due: ${money(total)} CAD`, "",
+    `Items: ${money(subtotal)}`, ...(discount ? [`${BONUS_LABEL}: -${money(discount)}`] : []), ...feeLines.map(([k, v]) => `${k}: ${v}`),
+    ...(changed ? [`Original total: ${money(original)} CAD`, ...changeLines.map(([k, v]) => `${k}: ${v}`), `New total due: ${money(total)} CAD`] : [`Total due: ${money(total)} CAD`]), "",
     ...(receipt || (dry && receiptPreview) ? [express ? `Your Canada Post receipt photo (tracking number and postage) is attached as ${attachName}. Tap it to open full screen and zoom in.` : `Your receipt photo is attached as ${attachName}.`, ""] : []),
     "How to pay (Interac e-Transfer)",
     `1. Send ${money(total)} CAD to: ${payEmail}`,
     `2. In the message box, enter your order number: ${o.ref}`,
     autodeposit ? "3. Auto-deposit is on, so no security question is needed." : `3. Security question: ${question} / Answer: ${answer}`,
-    "", ...(eta ? [`Timing: ${eta}`] : []), `Delivery: ${o.method}`, `Address: ${o.address}`,
+    "", ...(eta ? [`Timing: ${eta}`] : []), `Delivery: ${o.method}`, ...(o.address ? [`Address: ${o.address}`] : []),
     ...(note ? ["", note] : []), "", next.replace(/&rsquo;/g, "'"), "",
     "Thank you for choosing Tides of Change.", "Tides of Change", ORDER_TO, "For research purposes only.",
   ].join("\n");
