@@ -6,7 +6,7 @@
   'use strict';
 
   var ORDER_EMAIL = 'orders@tidesofchange.ca';
-  var ORDER_ENDPOINT = 'https://gvexlysmyqitmvexfxep.supabase.co/functions/v1/toc-order'; // one-tap sender
+  var ORDER_ENDPOINT = 'https://gvexlysmyqitmvexfxep.supabase.co/functions/v1/toc-order-test'; // one-tap sender (TEST copy -> toc-order-test)
   // Optional Changing Tides account autofill (public publishable key; RLS limits reads to the signed-in user)
   var CT_URL = 'https://gvexlysmyqitmvexfxep.supabase.co';
   var CT_KEY = 'sb_publishable_R572xTOvVsbVmsJiU_wCWg_PBw0Wo7J';
@@ -148,10 +148,16 @@
   var lastFocus = null;
   var ct = { open: false, busy: false, msg: '', ok: false };
   // Edmonton delivery pricing (owner-set). FREE_OVER: items subtotal at/above which delivery + fuel are free; null = never.
-  var DELIVERY_FEE = 20, FUEL_FEE = 0, FREE_OVER = 200; // free when items subtotal is $200 or more
+  var DELIVERY_FEE = 20, FUEL_FEE = 0, FREE_OVER = null; // owner 10 Oct 2026: no free delivery
+  // In-person area (owner 10 Oct 2026): Edmonton to Fort Saskatchewan = Edmonton T5/T6, Sherwood Park/Strathcona T8A-T8H, Fort Saskatchewan T8L.
+  var AREA_RE = /^(T5[A-Z]|T6[A-Z]|T8[ABCEGHL])$/;
+  var AREA_TEXT = 'Edmonton, Sherwood Park and Fort Saskatchewan';
+  function inArea(postal) { return AREA_RE.test(String(postal || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3)); }
   var FUEL_NAME = 'Rising Tide fuel surcharge';
   var FUEL_NOTE = 'Includes our Rising Tide fuel surcharge. Fuel prices are running high, and this keeps in-person delivery running until the tide goes out.';
   function fees(sum, method) {
+    if (!method) return { delivery: 0, fuel: 0, free: false, express: false, none: true };
+    if (method === METHODS[2]) return { delivery: 0, fuel: 0, free: false, express: false, pickup: true };
     if (method !== METHODS[0]) return { delivery: 0, fuel: 0, free: false, express: true };
     var free = FREE_OVER != null && sum >= FREE_OVER;
     return { delivery: free ? 0 : DELIVERY_FEE, fuel: free ? 0 : FUEL_FEE, free: free, express: false };
@@ -159,7 +165,11 @@
   function totalsHtml() {
     var t = totals(), f = fees(t.sum, form.method), h = '';
     h += '<div class="order-fee-row"><span>Items</span><span>' + money(t.sum) + '</span></div>';
-    if (f.express) {
+    if (f.none) {
+      h += '<div class="order-fee-row"><span>Delivery</span><span>Choose below</span></div>';
+    } else if (f.pickup) {
+      h += '<div class="order-fee-row"><span>Pick up in person</span><span>No delivery charge</span></div>';
+    } else if (f.express) {
       h += '<div class="order-fee-row"><span>Express mail</span><span>Canada Post rate</span></div>';
     } else if (f.free) {
       h += '<div class="order-fee-row"><span>In-person delivery</span><span class="free">Free</span></div>';
@@ -168,26 +178,22 @@
     }
     h += '<div class="order-total-row"><span>Estimated total</span><span data-testid="order-total">' + money(t.sum + f.delivery + f.fuel) + (f.express ? '+' : '') + '</span></div>';
     h += '<p class="order-total-note">' + (f.express ? 'CAD, plus Canada Post express postage. ' : 'CAD. ') + 'Final total confirmed by our team before payment.</p>';
-    if (!f.express && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
+    if (!f.none && !f.express && !f.pickup && !f.free) h += '<p class="order-total-note fuel-note">' + FUEL_NOTE + '</p>';
     if (!f.express && FREE_OVER != null && !f.free) h += '<p class="order-total-note">Free in-person delivery on orders of ' + money(FREE_OVER) + ' or more.</p>';
     return h;
   }
-  var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)'];
-  var form = { name: '', phone: '', email: '', method: METHODS[0], address: '', notes: '', ack: false };
-  (function prefillFromApp() {
-    try {
-      var q = new URLSearchParams(window.location.search);
-      var n = (q.get('ctn') || '').slice(0, 120), e = (q.get('cte') || '').slice(0, 200);
-      if (!n && !e) return;
-      if (n) form.name = n;
-      if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) form.email = e;
-      q.delete('ctn'); q.delete('cte');
-      var rest = q.toString();
-      history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash);
-      window.__ctPrefilled = true;
-      ct.ok = true; ct.msg = 'Filled in from your Changing Tides account.';
-    } catch (err) {}
-  })();
+  var METHODS = ['In-person delivery (Edmonton area)', 'Express mail (Canada Post rate)', 'Pick up in person'];
+  var PROVINCES = ['Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador', 'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec', 'Saskatchewan', 'Yukon'];
+  var PROV_CODE = { 'Alberta': 'AB', 'British Columbia': 'BC', 'Manitoba': 'MB', 'New Brunswick': 'NB', 'Newfoundland and Labrador': 'NL', 'Northwest Territories': 'NT', 'Nova Scotia': 'NS', 'Nunavut': 'NU', 'Ontario': 'ON', 'Prince Edward Island': 'PE', 'Quebec': 'QC', 'Saskatchewan': 'SK', 'Yukon': 'YT' };
+  var form = { name: '', phone: '', email: '', method: '', street: '', unit: '', city: '', province: 'Alberta', postal: '', address: '', notes: '', ack: false };
+  // Canadian postal code: A1A 1A1 (space optional while typing).
+  function normPostal(v) { var c = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return c.length === 6 ? c.slice(0, 3) + ' ' + c.slice(3) : String(v || '').toUpperCase().trim(); }
+  function postalOk(v) { return /^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTV-Z] ?[0-9][ABCEGHJ-NPRSTV-Z][0-9]$/.test(normPostal(v)); }
+  // One line for the order email: "Unit 4, 123 Main St, Red Deer, AB T5K 1A1"
+  function fullAddress() {
+    var st = [form.unit.trim() ? 'Unit ' + form.unit.trim().replace(/^(unit|apt|suite|#)\s*/i, '') : '', form.street.trim()].filter(Boolean).join(', ');
+    return [st, form.city.trim(), (PROV_CODE[form.province] || form.province) + ' ' + normPostal(form.postal)].filter(function (x) { return x && x.trim(); }).join(', ');
+  }
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
@@ -214,10 +220,19 @@
           field('ofName', 'Name', '<input id="ofName" name="name" autocomplete="name" required value="' + esc(form.name) + '">') +
           field('ofPhone', 'Phone', '<input id="ofPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" value="' + esc(form.phone) + '">') +
           field('ofEmail', 'Email', '<input id="ofEmail" name="email" type="email" autocomplete="email" inputmode="email" value="' + esc(form.email) + '">') +
-          field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method">' +
+          field('ofMethod', 'Delivery method', '<select id="ofMethod" name="method"><option value=""' + (form.method ? '' : ' selected') + ' disabled>Choose delivery method</option>' +
             METHODS.map(function (o) { return '<option' + (form.method === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
           '<p class="order-total-note" id="ofMethodNote">' + methodNote() + '</p>' +
-          field('ofAddress', 'Delivery address', '<textarea id="ofAddress" name="address" autocomplete="street-address" placeholder="Street, city, province, postal code">' + esc(form.address) + '</textarea>') +
+          '<fieldset class="order-addr"' + (form.method === METHODS[2] ? ' hidden' : '') + '><legend>Delivery address</legend>' +
+            field('ofStreet', 'Street address', '<input id="ofStreet" name="street" autocomplete="address-line1" placeholder="123 Main Street" value="' + esc(form.street) + '">') +
+            field('ofUnit', 'Unit / apt (optional)', '<input id="ofUnit" name="unit" autocomplete="address-line2" placeholder="Unit 4" value="' + esc(form.unit) + '">') +
+            field('ofCity', 'City', '<input id="ofCity" name="city" autocomplete="address-level2" placeholder="Edmonton" value="' + esc(form.city) + '">') +
+            '<div class="order-addr-row">' +
+              field('ofProv', 'Province', '<select id="ofProv" name="province" autocomplete="address-level1">' +
+                PROVINCES.map(function (o) { return '<option' + (form.province === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>') +
+              field('ofPostal', 'Postal code', '<input id="ofPostal" name="postal" autocomplete="postal-code" autocapitalize="characters" maxlength="7" placeholder="T5K 1A1" value="' + esc(form.postal) + '">') +
+            '</div>' +
+          '</fieldset>' +
           field('ofNotes', 'Notes (optional)', '<textarea id="ofNotes" name="notes" placeholder="Anything we should know">' + esc(form.notes) + '</textarea>') +
           '<label class="order-check"><input type="checkbox" id="ofAck"' + (form.ack ? ' checked' : '') + '> I understand these products are for research purposes only.</label>' +
           '<div class="order-hp" aria-hidden="true"><label>Leave blank<input id="ofWebsite" name="website" tabindex="-1" autocomplete="off"></label></div>' +
@@ -236,7 +251,7 @@
       f.addEventListener('change', capture);
       f.addEventListener('submit', submit);
       body.querySelector('#orderCopy').addEventListener('click', copyOrder);
-      var o = body.querySelector('#ctOpen'); if (o) o.addEventListener('click', function () { capture(); ct.open = true; ct.msg = ''; renderSheet(); });
+      var o = body.querySelector('#ctOpen'); if (o) o.addEventListener('click', function () { capture(); ct.open = true; ct.msg = ''; renderSheet(); var e = body.querySelector('#ctEmail'); if (e) e.focus(); });
       var c = body.querySelector('#ctCancel'); if (c) c.addEventListener('click', function () { capture(); ct.open = false; ct.msg = ''; renderSheet(); });
       var g = body.querySelector('#ctGo'); if (g) g.addEventListener('click', ctSignInAndFill);
       var cp = body.querySelector('#ctPass'); if (cp) cp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); ctSignInAndFill(); } });
@@ -311,9 +326,12 @@
   }
 
   function methodNote() {
+    if (form.method === METHODS[2]) return 'No delivery charge. We’ll send you the pick-up details with your order confirmation.';
     return form.method === METHODS[1]
       ? 'Express mail is charged at the Canada Post rate for your address. We’ll confirm the exact amount before you pay.'
-      : 'Edmonton area only: ' + money(DELIVERY_FEE) + ' in-person delivery, free on orders of ' + money(FREE_OVER) + ' or more. Outside Edmonton? Choose Express mail.';
+      : form.method === METHODS[0]
+        ? 'In-person delivery is ' + money(DELIVERY_FEE) + ', for ' + AREA_TEXT + ' only. Anywhere else? Choose Express mail.'
+        : 'In-person delivery (' + money(DELIVERY_FEE) + ') is for ' + AREA_TEXT + ' only. Everywhere else: Express mail.';
   }
   function field(id, text, control) {
     return '<div class="order-field"><label for="' + id + '">' + text + '</label>' + control + '</div>';
@@ -321,8 +339,9 @@
   function capture() {
     var g = function (id) { var el = body.querySelector('#' + id); return el ? el.value : ''; };
     form.name = g('ofName'); form.phone = g('ofPhone'); form.email = g('ofEmail');
-    form.method = g('ofMethod') || form.method; form.address = g('ofAddress'); form.notes = g('ofNotes');
+    form.method = g('ofMethod') || form.method; form.street = g('ofStreet'); form.unit = g('ofUnit'); form.city = g('ofCity'); form.province = g('ofProv') || form.province; form.postal = g('ofPostal'); form.address = fullAddress(); form.notes = g('ofNotes');
     var mn = body.querySelector('#ofMethodNote'); if (mn) mn.textContent = methodNote();
+    var fa = body.querySelector('.order-addr'); if (fa) fa.hidden = form.method === METHODS[2];
     var ot = body.querySelector('#orderTotals'); if (ot) ot.innerHTML = totalsHtml();
     var a = body.querySelector('#ofAck'); form.ack = !!(a && a.checked);
   }
@@ -348,7 +367,7 @@
       'Phone: ' + (form.phone.trim() || '—'),
       'Email: ' + (form.email.trim() || '—'),
       'Delivery method: ' + form.method,
-      'Delivery address: ' + form.address.trim().replace(/\s*\n\s*/g, ', '),
+      'Delivery address: ' + (form.method === METHODS[2] ? '—' : form.address.trim().replace(/\s*\n\s*/g, ', ')),
       '',
       'Items:'
     ];
@@ -357,7 +376,8 @@
     });
     var f = fees(t.sum, form.method);
     lines.push('', 'Items: ' + money(t.sum));
-    if (f.express) lines.push('Express mail: Canada Post rate (confirmed before payment)');
+    if (f.pickup) lines.push('Pick up in person: no delivery charge');
+    else if (f.express) lines.push('Express mail: Canada Post rate (confirmed before payment)');
     else lines.push('In-person delivery: ' + (f.free ? 'Free' : money(f.delivery)));
     lines.push('Estimated total: ' + money(t.sum + f.delivery + f.fuel) + ' CAD' + (f.express ? ' + Canada Post express postage' : '') + ' (final total confirmed before payment)');
     if (form.notes.trim()) lines.push('', 'Notes: ' + form.notes.trim());
@@ -371,7 +391,13 @@
     if (!form.name.trim()) return 'Please enter your name.';
     if (!form.phone.trim() && !form.email.trim()) return 'Please enter a phone number or email so we can confirm.';
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return 'That email address doesn’t look right.';
-    if (!form.address.trim()) return 'Please enter your delivery address.';
+    if (!form.method) return 'Please choose a delivery method.';
+    var pickup = form.method === METHODS[2];
+    if (!pickup && !form.street.trim()) return 'Please enter your street address.';
+    if (!pickup && !form.city.trim()) return 'Please enter your city.';
+    if (!pickup && !form.postal.trim()) return 'Please enter your postal code.';
+    if (!pickup && !postalOk(form.postal)) return 'That postal code doesn’t look right. It should look like T5K 1A1.';
+    if (form.method === METHODS[0] && !inArea(form.postal)) return 'In-person delivery is for ' + AREA_TEXT + ' only. For your postal code, please choose Express mail.';
     if (!form.ack) return 'Please tick the research-purposes box.';
     return '';
   }
@@ -402,7 +428,7 @@
     var hp = body.querySelector('#ofWebsite');
     var payload = {
       name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(),
-      method: form.method, address: form.address.trim(), notes: form.notes.trim(), ack: form.ack,
+      method: form.method, address: form.method === METHODS[2] ? '' : form.address.trim(), notes: form.notes.trim(), ack: form.ack,
       website: hp ? hp.value : '',
       items: totals().list.map(function (it) { return { name: it.name, size: it.strength, qty: it.qty, price: it.price }; })
     };
@@ -411,6 +437,7 @@
       .then(function (res) {
         sending = false;
         if (res.ok) return showSent(res.j.ref, res.j.customerCopy);
+        if (res.j && res.j.error === 'out_of_area') { var b2 = body.querySelector('[data-testid=order-send]'); if (b2) { b2.disabled = false; b2.textContent = 'Send order'; } var e2 = body.querySelector('#orderError'); if (e2) e2.textContent = 'In-person delivery is for ' + AREA_TEXT + ' only. For your postal code, please choose Express mail.'; return; }
         sendFailed();
       })
       .catch(function () { sending = false; sendFailed(); });
@@ -473,27 +500,18 @@
     else legacy();
   }
 
-  var lockY = 0;
-  function lockScroll() {
-    lockY = window.scrollY || 0;
-    var b = document.body.style;
-    b.position = 'fixed'; b.top = (-lockY) + 'px'; b.left = '0'; b.right = '0'; b.width = '100%'; b.overflow = 'hidden';
-  }
-  function unlockScroll() {
-    var b = document.body.style;
-    b.position = ''; b.top = ''; b.left = ''; b.right = ''; b.width = ''; b.overflow = '';
-    window.scrollTo(0, lockY);
-  }
-
   function openSheet() {
     lastFocus = document.activeElement;
     renderSheet();
     sheet.hidden = false;
-    lockScroll();
+    document.body.style.overflow = 'hidden';
+    var c = sheet.querySelector('#orderClose');
+    if (c) c.focus();
   }
   function closeSheet() {
     sheet.hidden = true;
-    unlockScroll();
+    document.body.style.overflow = '';
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
 
   document.addEventListener('click', function (e) {
