@@ -1,0 +1,22 @@
+/* Dark/Light switch for the price list (TEST, 31 Oct 2026). Dark = unchanged locked look; opens Dark. */
+.theme-pill{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;z-index:5;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--navy-line);background:var(--navy-800);color:var(--text);font:600 13px 'Space Grotesk',system-ui,sans-serif;cursor:pointer}
+.theme-pill::before{content:"";position:absolute;inset:-6px -4px}
+.theme-pill svg{width:16px;height:16px}
+html.light{
+  --navy-900:#ffffff; --navy-850:#f5f7fa; --navy-800:#ffffff; --navy-750:#f1f4f8; --navy-line:#d6dce6;
+  --teal:#00735C; --teal-2:#0B7354; --cyan:#0F6E80; --blue:#006C95; --orange:#B45309;
+  --text:#0f172a; --text-2:#3d4a60; --warn:#8E5900;
+}
+html.light .site-header{background:linear-gradient(180deg,#e9f6f4 0%,#ffffff 100%);border-bottom-color:#01c88a}
+html.light .brand-title{text-shadow:none}
+html.light .app-icon{box-shadow:0 6px 18px rgba(10,20,36,.18)}
+html.light .wave-cyan path{fill:rgba(34,199,230,.35)}
+html.light .wave-teal path{fill:rgba(1,200,138,.40)}
+html.light .wave-blue path{fill:rgba(11,155,220,.55)}
+html.light .wave-orange path{fill:#ff9500}
+html.light .announce-waves .w4{fill:#ff9500}
+/* buttons that sit on teal keep bright teal with dark letters */
+html.light .share-btn:hover, html.light .goal-chip-all, html.light .goal-chip-all[aria-pressed="true"], html.light .back-to-top, html.light .price-row .add-btn.in-cart, html.light .skip-link{color:#ffffff}
+html.light .order-cta, html.light [class*="order-btn"]{color:#ffffff}
+html.light .updated-stamp{color:#5a6a82}
+html.light body{background:var(--navy-850)}
